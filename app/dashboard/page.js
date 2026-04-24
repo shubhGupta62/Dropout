@@ -1,38 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useEffectEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { uploadImage, fetchBrands, fetchBrandAnalytics, formatNumber, deleteDrop } from '../../lib/api';
+import { uploadImage, fetchBrands, fetchBrandAnalytics, formatNumber } from '../../lib/api';
 import { getStoredToken, restoreStoredUserSession } from '../../lib/userStorage';
-import { categories as allCategories } from '../../lib/drops';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://dropout-htf0.onrender.com';
-
-// Category-aware form config
-const categoryConfig = {
-  'tech-gadgets':        { showPrice: true,  priceLabel: 'Price',            pricePlaceholder: '$999',        titleLabel: 'Product Name *',    titlePlaceholder: 'e.g. iPhone 17 Pro',            descPlaceholder: 'Describe the product, specs, features...',       linkLabel: 'Shop / Pre-order Link',  linkPlaceholder: 'https://brand.com/product',     dateLabel: 'Launch Date',  dropNoun: 'launch' },
-  'ai-software':         { showPrice: 'opt', priceLabel: 'Pricing (optional)', pricePlaceholder: 'Free / $20/mo', titleLabel: 'Product / Feature *', titlePlaceholder: 'e.g. GPT-5 Pro',                descPlaceholder: 'What\'s new? Key features, capabilities...',     linkLabel: 'Try It / Website',       linkPlaceholder: 'https://product.com',            dateLabel: 'Launch Date',  dropNoun: 'launch' },
-  'movies-ott':          { showPrice: false, priceLabel: '',                 pricePlaceholder: '',             titleLabel: 'Title *',           titlePlaceholder: 'e.g. Spiderman: Brand New Day',  descPlaceholder: 'Plot, cast, where to watch...',                  linkLabel: 'Trailer / Streaming Link', linkPlaceholder: 'https://youtube.com/watch?v=...', dateLabel: 'Release Date', dropNoun: 'release' },
-  'gaming':              { showPrice: 'opt', priceLabel: 'Price (optional)',  pricePlaceholder: 'Free / $59.99', titleLabel: 'Game / Update *',    titlePlaceholder: 'e.g. Fortnite x Dragon Ball Z',  descPlaceholder: 'Gameplay details, platforms, features...',       linkLabel: 'Store / Download Link',  linkPlaceholder: 'https://store.steampowered.com', dateLabel: 'Release Date', dropNoun: 'release' },
-  'music-entertainment': { showPrice: false, priceLabel: '',                 pricePlaceholder: '',             titleLabel: 'Title *',           titlePlaceholder: 'e.g. Album: Midnight Sessions',  descPlaceholder: 'Artist, tracklist, streaming platforms...',      linkLabel: 'Listen / Tickets Link',  linkPlaceholder: 'https://spotify.com/album/...',  dateLabel: 'Release Date', dropNoun: 'release' },
-  'fashion-streetwear':  { showPrice: true,  priceLabel: 'Price',            pricePlaceholder: '$48 - $298',   titleLabel: 'Product / Collection *', titlePlaceholder: 'e.g. Summer 2026 Collection',  descPlaceholder: 'Materials, sizing, collab details...',           linkLabel: 'Shop Link',              linkPlaceholder: 'https://brand.com/collection',   dateLabel: 'Drop Date',    dropNoun: 'drop' },
-  'beauty-skincare':     { showPrice: true,  priceLabel: 'Price',            pricePlaceholder: '$35',          titleLabel: 'Product Name *',    titlePlaceholder: 'e.g. Glow Serum Limited Edition', descPlaceholder: 'Ingredients, benefits, skin type...',            linkLabel: 'Shop Link',              linkPlaceholder: 'https://brand.com/product',      dateLabel: 'Drop Date',    dropNoun: 'drop' },
-  'automobiles':         { showPrice: true,  priceLabel: 'Starting Price',   pricePlaceholder: '$45,000',      titleLabel: 'Model Name *',      titlePlaceholder: 'e.g. Model S Plaid+',            descPlaceholder: 'Specs, performance, range, features...',         linkLabel: 'Pre-order / Details Link', linkPlaceholder: 'https://brand.com/model',       dateLabel: 'Reveal Date',  dropNoun: 'reveal' },
-  'mobility-ev':         { showPrice: true,  priceLabel: 'Starting Price',   pricePlaceholder: '$35,000',      titleLabel: 'Vehicle / Product *', titlePlaceholder: 'e.g. Urban EV Scooter',          descPlaceholder: 'Range, speed, charging, features...',            linkLabel: 'Pre-order Link',         linkPlaceholder: 'https://brand.com/product',      dateLabel: 'Launch Date',  dropNoun: 'launch' },
-  'food-beverages':      { showPrice: true,  priceLabel: 'Price',            pricePlaceholder: '$4.99',        titleLabel: 'Product Name *',    titlePlaceholder: 'e.g. KSI x Prime Energy',        descPlaceholder: 'Flavor, ingredients, availability...',           linkLabel: 'Shop / Order Link',      linkPlaceholder: 'https://brand.com/product',      dateLabel: 'Drop Date',    dropNoun: 'drop' },
-  'lifestyle-home':      { showPrice: true,  priceLabel: 'Price',            pricePlaceholder: '$129',         titleLabel: 'Product Name *',    titlePlaceholder: 'e.g. Smart Lamp Pro',             descPlaceholder: 'Features, materials, dimensions...',             linkLabel: 'Shop Link',              linkPlaceholder: 'https://brand.com/product',      dateLabel: 'Drop Date',    dropNoun: 'drop' },
-  'startups-products':   { showPrice: false, priceLabel: '',                 pricePlaceholder: '',             titleLabel: 'Announcement Title *', titlePlaceholder: 'e.g. Series A — $10M Raised',  descPlaceholder: 'What\'s launching? Key details, mission...',     linkLabel: 'Website / Signup Link',  linkPlaceholder: 'https://startup.com',            dateLabel: 'Launch Date',  dropNoun: 'launch' },
-  'creator-tools-audio': { showPrice: 'opt', priceLabel: 'Price (optional)', pricePlaceholder: '$149 / Free',   titleLabel: 'Product Name *',    titlePlaceholder: 'e.g. Studio Mic Pro X',           descPlaceholder: 'Specs, compatibility, what\'s included...',      linkLabel: 'Shop / Download Link',   linkPlaceholder: 'https://brand.com/product',      dateLabel: 'Drop Date',    dropNoun: 'drop' },
-  'collectibles-culture':{ showPrice: true,  priceLabel: 'Price',            pricePlaceholder: '$50 - $500',   titleLabel: 'Item / Collection *', titlePlaceholder: 'e.g. Vintage Poster Series',    descPlaceholder: 'Edition size, materials, artist...',             linkLabel: 'Shop Link',              linkPlaceholder: 'https://brand.com/collection',   dateLabel: 'Drop Date',    dropNoun: 'drop' },
-  'sports-equipment':    { showPrice: true,  priceLabel: 'Price',            pricePlaceholder: '$199',         titleLabel: 'Product Name *',    titlePlaceholder: 'e.g. Pro Carbon Tennis Racket',   descPlaceholder: 'Specs, materials, athlete endorsement...',       linkLabel: 'Shop Link',              linkPlaceholder: 'https://brand.com/product',      dateLabel: 'Drop Date',    dropNoun: 'drop' },
-  'travel-experiences':  { showPrice: 'opt', priceLabel: 'Price (optional)', pricePlaceholder: '$299/person',   titleLabel: 'Experience Title *', titlePlaceholder: 'e.g. Bali Creator Retreat 2026', descPlaceholder: 'Itinerary, dates, what\'s included...',           linkLabel: 'Book / Details Link',    linkPlaceholder: 'https://brand.com/experience',   dateLabel: 'Date',         dropNoun: 'experience' },
-};
-
-const defaultConfig = { showPrice: true, priceLabel: 'Price', pricePlaceholder: '$99', titleLabel: 'Title *', titlePlaceholder: 'e.g. Product Name', descPlaceholder: 'Describe your drop...', linkLabel: 'Official Link', linkPlaceholder: 'https://...', dateLabel: 'Drop Date', dropNoun: 'drop' };
-
-function getCategoryConfig(categoryId) {
-  return categoryConfig[categoryId] || defaultConfig;
-}
 
 function getAuthHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -55,15 +28,11 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [launchNow, setLaunchNow] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
-  const [extraImages, setExtraImages] = useState([]);  // { url, preview }
-  const [extraUploading, setExtraUploading] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [brandId, setBrandId] = useState(null);
-  const [deletingDropId, setDeletingDropId] = useState(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [form, setForm] = useState({
-    title: '', description: '', category: 'tech-gadgets', price: '',
+    title: '', description: '', category: 'sneakers', price: '',
     dropDate: '', dropTime: '', website: '', imageUrl: '', brandName: '',
     accessType: 'open', maxQuantity: '',
   });
@@ -89,13 +58,7 @@ export default function DashboardPage() {
     setForm(f => ({ ...f, brandName: localUser.name }));
   }, [hasStoredToken, router]);
 
-  // Load analytics when tab switches
-  useEffect(() => {
-    if (activeTab !== 'analytics' || !user) return;
-    loadAnalytics();
-  }, [activeTab, user]);
-
-  const loadAnalytics = async () => {
+  const loadAnalytics = useEffectEvent(async () => {
     setAnalyticsLoading(true);
     try {
       // First find or discover brandId
@@ -113,7 +76,12 @@ export default function DashboardPage() {
       setAnalytics(null);
     }
     setAnalyticsLoading(false);
-  };
+  });
+
+  useEffect(() => {
+    if (activeTab !== 'analytics' || !user) return;
+    loadAnalytics();
+  }, [activeTab, user]);
 
   const handleImageSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -130,26 +98,6 @@ export default function DashboardPage() {
       setError(`Upload failed: ${err.message || 'Server error'}. Paste an image URL below instead.`);
     }
     setUploading(false);
-  };
-
-  const handleExtraImageSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || extraImages.length >= 4) return;
-    const reader = new FileReader();
-    const localPreview = await new Promise(r => { reader.onload = (ev) => r(ev.target.result); reader.readAsDataURL(file); });
-    setExtraUploading(true);
-    setError('');
-    try {
-      const result = await uploadImage(file);
-      setExtraImages(prev => [...prev, { url: result.url, preview: localPreview }]);
-    } catch (err) {
-      setError(`Extra image upload failed: ${err.message}`);
-    }
-    setExtraUploading(false);
-  };
-
-  const removeExtraImage = (idx) => {
-    setExtraImages(prev => prev.filter((_, i) => i !== idx));
   };
 
   const handleSubmit = async (e) => {
@@ -182,9 +130,6 @@ export default function DashboardPage() {
       const dropTime = launchNow
         ? new Date(Date.now() - 60000).toISOString()
         : new Date(`${form.dropDate}T${form.dropTime}:00`).toISOString();
-      // Build imageUrls array: primary + extras
-      const allImageUrls = [form.imageUrl, ...extraImages.map(ei => ei.url)].filter(Boolean);
-
       const dropRes = await fetch(`${API_URL}/api/drops`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -192,8 +137,7 @@ export default function DashboardPage() {
           title: form.title,
           description: form.description,
           imageUrl: form.imageUrl,
-          imageUrls: allImageUrls,
-          price: getCategoryConfig(form.category).showPrice === false ? '' : (form.price ? `$${form.price.replace('$', '')}` : 'TBA'),
+          price: form.price ? `$${form.price.replace('$', '')}` : 'TBA',
           category: form.category,
           dropTime,
           website: form.website,
@@ -209,10 +153,9 @@ export default function DashboardPage() {
       }
 
       setSuccess(launchNow ? '🎉 Drop is LIVE! Redirecting to feed...' : '🎉 Drop created! Redirecting to feed...');
-      setForm({ title: '', description: '', category: 'tech-gadgets', price: '', dropDate: '', dropTime: '', website: '', imageUrl: '', brandName: form.brandName, accessType: 'open', maxQuantity: '' });
+      setForm({ title: '', description: '', category: 'sneakers', price: '', dropDate: '', dropTime: '', website: '', imageUrl: '', brandName: form.brandName, accessType: 'open', maxQuantity: '' });
       setLaunchNow(false);
       setImagePreview(null);
-      setExtraImages([]);
       setSubmitting(false);
       setTimeout(() => { setSuccess(''); router.push('/'); }, 1500);
     } catch (err) {
@@ -300,49 +243,13 @@ export default function DashboardPage() {
                 <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   <div style={{ fontSize: '28px', marginBottom: '10px', opacity: 0.5 }}>◇</div>
                   <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>Click to upload image</div>
-                  <div style={{ fontSize: '11px', marginTop: '4px' }}>JPG, PNG, WebP · Max 5MB</div>
+                  <div style={{ fontSize: '11px', marginTop: '4px' }}>JPG, PNG, WebP · Max 10MB</div>
                 </div>
               )}
             </div>
             <div style={{ marginTop: '8px' }}>
               <input style={{ ...inputStyle, fontSize: '12px' }} placeholder="Or paste image URL here (https://...)" value={form.imageUrl}
                 onChange={(e) => { setForm({ ...form, imageUrl: e.target.value }); if (e.target.value) setImagePreview(e.target.value); }} />
-            </div>
-
-            {/* Extra Images Grid */}
-            <div style={{ marginTop: '14px' }}>
-              <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Additional Photos ({extraImages.length}/4)
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                {extraImages.map((img, idx) => (
-                  <div key={idx} style={{ position: 'relative', aspectRatio: '1', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <img src={img.preview || img.url} alt={`Extra ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    <button type="button" onClick={() => removeExtraImage(idx)} style={{
-                      position: 'absolute', top: '4px', right: '4px', width: '20px', height: '20px', borderRadius: '50%',
-                      background: 'rgba(239,68,68,0.8)', border: 'none', color: '#fff', fontSize: '12px', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0,
-                    }}>✕</button>
-                  </div>
-                ))}
-                {extraImages.length < 4 && (
-                  <label style={{
-                    aspectRatio: '1', borderRadius: '10px', border: '2px dashed rgba(255,255,255,0.06)',
-                    background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: extraUploading ? 'wait' : 'pointer', transition: 'all 0.2s ease', flexDirection: 'column', gap: '4px',
-                  }}>
-                    <input type="file" accept="image/*" onChange={handleExtraImageSelect} style={{ display: 'none' }} disabled={extraUploading} />
-                    {extraUploading ? (
-                      <div style={{ fontSize: '10px', color: '#60a5fa', fontWeight: 600 }}>...</div>
-                    ) : (
-                      <>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)', fontWeight: 500 }}>Add</span>
-                      </>
-                    )}
-                  </label>
-                )}
-              </div>
             </div>
           </div>
 
@@ -353,10 +260,10 @@ export default function DashboardPage() {
               onChange={(e) => setForm({ ...form, brandName: e.target.value })} />
           </div>
 
-          {/* Title — adapts label per category */}
+          {/* Product Title */}
           <div>
-            <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{getCategoryConfig(form.category).titleLabel}</label>
-            <input style={inputStyle} placeholder={getCategoryConfig(form.category).titlePlaceholder} value={form.title} required
+            <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Product Title *</label>
+            <input style={inputStyle} placeholder="e.g. Air Max 2030 Limited Edition" value={form.title} required
               onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </div>
 
@@ -364,31 +271,31 @@ export default function DashboardPage() {
           <div>
             <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Caption / Description</label>
             <textarea style={{ ...inputStyle, resize: 'none', minHeight: '100px' }}
-              placeholder={getCategoryConfig(form.category).descPlaceholder} value={form.description}
+              placeholder="Describe your drop..." value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
 
-          {/* Category + Price (price adapts or hides per category) */}
-          {(() => { const cfg = getCategoryConfig(form.category); return (
-          <div style={{ display: 'grid', gridTemplateColumns: cfg.showPrice !== false ? '1fr 1fr' : '1fr', gap: '12px' }}>
+          {/* Category + Price */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Category</label>
               <select style={{ ...inputStyle, appearance: 'none' }} value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {allCategories.filter(c => c.id !== 'all').map(c => (
-                  <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-                ))}
+                <option value="sneakers">Sneakers</option>
+                <option value="tech">Tech</option>
+                <option value="streetwear">Streetwear</option>
+                <option value="gaming">Gaming</option>
+                <option value="ai-tools">AI Tools</option>
+                <option value="creator-merch">Creator Merch</option>
+                <option value="limited">Limited Edition</option>
               </select>
             </div>
-            {cfg.showPrice !== false && (
             <div>
-              <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{cfg.priceLabel}</label>
-              <input style={inputStyle} placeholder={cfg.pricePlaceholder} value={form.price}
+              <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Price</label>
+              <input style={inputStyle} placeholder="$199.99" value={form.price}
                 onChange={(e) => setForm({ ...form, price: e.target.value })} />
             </div>
-            )}
           </div>
-          ); })()}
 
 
 
@@ -426,7 +333,7 @@ export default function DashboardPage() {
               {/* Drop Date + Time */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{getCategoryConfig(form.category).dateLabel} *</label>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Drop Date *</label>
                   <input type="date" style={inputStyle} value={form.dropDate}
                     onChange={(e) => setForm({ ...form, dropDate: e.target.value })} />
                 </div>
@@ -448,13 +355,13 @@ export default function DashboardPage() {
             </>
           )}
 
-          {/* Website — label adapts per category */}
+          {/* Website */}
           <div>
-            <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{getCategoryConfig(form.category).linkLabel}</label>
-            <input type="url" style={inputStyle} placeholder={getCategoryConfig(form.category).linkPlaceholder}
+            <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Official Link (Shop Now)</label>
+            <input type="url" style={inputStyle} placeholder="https://yourbrand.com/product"
               value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              This link will appear as the action button on your {getCategoryConfig(form.category).dropNoun}
+              This link will appear as the &quot;Shop Now&quot; button on your drop
             </div>
           </div>
 
@@ -553,106 +460,11 @@ export default function DashboardPage() {
                     }}>
                       🔥 {d.hypeScore}
                     </div>
-                    <button
-                      onClick={() => setShowDeleteConfirm(d.id)}
-                      style={{
-                        width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
-                        background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.1)',
-                        color: '#ef4444', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all 0.2s ease', padding: 0,
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.06)'; }}
-                      title="Delete drop"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                      </svg>
-                    </button>
                   </div>
                 ))}
               </div>
             </>
           )}
-        </div>
-      )}
-
-      {/* ═══════ DELETE CONFIRMATION MODAL ═══════ */}
-      {showDeleteConfirm && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '20px',
-        }}
-          onClick={() => setShowDeleteConfirm(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: '340px',
-              borderRadius: '24px', overflow: 'hidden',
-              background: '#111118', border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
-            }}
-          >
-            <div style={{ padding: '28px 24px 20px', textAlign: 'center' }}>
-              <div style={{
-                width: '48px', height: '48px', borderRadius: '50%', margin: '0 auto 16px',
-                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.15)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-                </svg>
-              </div>
-              <div style={{ fontSize: '17px', fontWeight: 700, color: '#fff', fontFamily: "'Sora', sans-serif", marginBottom: '8px' }}>
-                Delete this drop?
-              </div>
-              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                This will permanently remove the drop, including all likes, comments, and saves. This action cannot be undone.
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', padding: '0 24px 24px' }}>
-              <button
-                onClick={() => setShowDeleteConfirm(null)}
-                style={{
-                  flex: 1, padding: '12px', borderRadius: '12px', border: 'none',
-                  background: 'rgba(255,255,255,0.06)', color: '#fff',
-                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-                  fontFamily: "'Sora', sans-serif",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  setDeletingDropId(showDeleteConfirm);
-                  try {
-                    await deleteDrop(showDeleteConfirm);
-                    setShowDeleteConfirm(null);
-                    // Reload analytics
-                    loadAnalytics();
-                  } catch (err) {
-                    alert('Failed to delete: ' + (err.message || 'Unknown error'));
-                  }
-                  setDeletingDropId(null);
-                }}
-                disabled={deletingDropId === showDeleteConfirm}
-                style={{
-                  flex: 1, padding: '12px', borderRadius: '12px', border: 'none',
-                  background: deletingDropId === showDeleteConfirm ? 'rgba(239,68,68,0.3)' : '#ef4444',
-                  color: '#fff', fontSize: '14px', fontWeight: 600,
-                  cursor: deletingDropId === showDeleteConfirm ? 'wait' : 'pointer',
-                  fontFamily: "'Sora', sans-serif",
-                }}
-              >
-                {deletingDropId === showDeleteConfirm ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

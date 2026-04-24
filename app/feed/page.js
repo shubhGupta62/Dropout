@@ -3,28 +3,17 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DropCard from '../../components/DropCard';
-import { fetchDrops, fetchFollowingDrops, transformDrop } from '../../lib/api';
+import { fetchDrops, transformDrop } from '../../lib/api';
 import { filterDropsByTab } from '../../lib/dropStatus';
-
-
-function getUser() {
-  if (typeof window === 'undefined') return null;
-  try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
-}
+import { GlassPanelLayers } from '../../components/LiquidGlass';
 
 export default function Home() {
   const searchParams = useSearchParams();
   const categoryFromUrl = searchParams.get('category') || 'all';
-  const modeFromUrl = searchParams.get('mode') || 'explore'; // 'explore' or 'foryou'
   const [active, setActive] = useState(categoryFromUrl);
   const [tab, setTab] = useState('upcoming');
   const [drops, setDrops] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loggedIn, setLoggedIn] = useState(false);
-
-  useEffect(() => {
-    setLoggedIn(!!getUser());
-  }, []);
 
   useEffect(() => {
     setActive(categoryFromUrl);
@@ -32,9 +21,7 @@ export default function Home() {
 
   useEffect(() => {
     setLoading(true);
-    const isForYou = modeFromUrl === 'foryou' && loggedIn;
-    const fetchFn = isForYou ? fetchFollowingDrops : fetchDrops;
-    fetchFn(active)
+    fetchDrops(active)
       .then((data) => {
         const transformed = data.map(transformDrop);
         setDrops(filterDropsByTab(transformed, tab));
@@ -46,71 +33,37 @@ export default function Home() {
           setLoading(false);
         });
       });
-  }, [active, tab, modeFromUrl, loggedIn]);
+  }, [active, tab]);
 
   const tabs = [
     { id: 'upcoming', label: 'Upcoming' },
     { id: 'live', label: 'Live' },
+    { id: 'all', label: 'All' },
   ];
-
-  const isForYou = modeFromUrl === 'foryou';
 
   return (
     <div>
-      {/* ---- Header + Tabs ---- */}
+      {/* ---- Segmented Control: Upcoming / Live / All ---- */}
       <div style={{ padding: '24px 16px 18px', maxWidth: '470px', margin: '0 auto', width: '100%' }}>
-
-        {/* For You indicator */}
-        {isForYou && loggedIn && (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: '8px', marginBottom: '14px',
-          }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '6px 16px', borderRadius: '50px',
-              background: 'rgba(139,92,246,0.08)',
-              border: '1px solid rgba(139,92,246,0.15)',
-              fontSize: '12px', fontWeight: 600, color: '#a78bfa',
-              fontFamily: "'Sora', sans-serif",
-              letterSpacing: '-0.01em',
-            }}>
-              <span style={{ fontSize: '14px' }}>✨</span> For You
-            </div>
-          </div>
-        )}
-
-        {/* Tabs: Upcoming / Live */}
         <div style={{
           display: 'flex', borderRadius: 'var(--radius-full)',
-          overflow: 'hidden', padding: '3px',
+          overflow: 'hidden',
+          padding: '3px',
           position: 'relative',
-          background: 'rgba(255,255,255,0.02)',
-          border: 'none',
-          boxShadow:
-            '0 0 6px rgba(0,0,0,0.04), ' +
-            '0 2px 8px rgba(0,0,0,0.1), ' +
-            'inset 3px 3px 0.5px -3px rgba(255,255,255,0.7), ' +
-            'inset -3px -3px 0.5px -3px rgba(255,255,255,0.6), ' +
-            'inset 1px 1px 1px -0.5px rgba(255,255,255,0.45), ' +
-            'inset -1px -1px 1px -0.5px rgba(255,255,255,0.45), ' +
-            'inset 0 0 6px 5px rgba(255,255,255,0.08), ' +
-            'inset 0 0 2px 2px rgba(255,255,255,0.04), ' +
-            '0 0 12px rgba(0,0,0,0.12)',
+          background: 'rgba(5,5,10,0.55)',
+          boxShadow: '0 6px 6px rgba(0,0,0,0.2), 0 0 20px rgba(0,0,0,0.1)',
         }}>
+          <GlassPanelLayers />
+          {/* Sliding indicator pill */}
           <div style={{
-            position: 'absolute', top: '3px',
-            left: `calc(${tabs.findIndex(t => t.id === tab) * 50}% + 3px)`,
-            width: `calc(50% - 6px)`,
+            position: 'absolute',
+            top: '3px',
+            left: `calc(${tabs.findIndex(t => t.id === tab) * 100 / 3}% + 3px)`,
+            width: `calc(${100 / 3}% - 6px)`,
             height: 'calc(100% - 6px)',
             borderRadius: 'var(--radius-full)',
-            background: 'rgba(59,130,246,0.08)',
-            boxShadow:
-              'inset 2px 2px 0.5px -1.5px rgba(255,255,255,0.5), ' +
-              'inset -2px -2px 0.5px -1.5px rgba(255,255,255,0.4), ' +
-              'inset 0 0 4px 3px rgba(59,130,246,0.08), ' +
-              'inset 0 0 1px 1px rgba(255,255,255,0.06), ' +
-              '0 0 8px rgba(59,130,246,0.06)',
+            background: 'rgba(59,130,246,0.1)',
+            boxShadow: 'inset 1px 1px 0.5px -0.5px rgba(255,255,255,0.3), inset -1px -1px 0.5px -0.5px rgba(255,255,255,0.2), inset 0 0 4px 2px rgba(59,130,246,0.06)',
             transition: 'left 0.5s cubic-bezier(0.175, 0.885, 0.32, 2.2)',
             zIndex: 4,
           }} />
@@ -127,14 +80,14 @@ export default function Home() {
                 borderRadius: 'var(--radius-full)',
                 letterSpacing: '-0.01em',
                 fontFamily: "'Sora', sans-serif",
-                position: 'relative', zIndex: 5,
+                position: 'relative',
+                zIndex: 5,
               }}
             >
               {t.label}
             </button>
           ))}
         </div>
-
         {/* Active category indicator */}
         {active !== 'all' && (
           <div style={{
@@ -142,7 +95,7 @@ export default function Home() {
             gap: '8px', marginTop: '12px',
           }}>
             <span style={{ fontSize: '12px', color: '#60a5fa', fontWeight: 500 }}>
-              Filtered: {active.charAt(0).toUpperCase() + active.slice(1).replace(/-/g, ' ')}
+              Filtered: {active.charAt(0).toUpperCase() + active.slice(1).replace('-', ' ')}
             </span>
             <button
               onClick={() => setActive('all')}
@@ -183,12 +136,8 @@ export default function Home() {
       {!loading && drops.length === 0 && (
         <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
           <div style={{ fontSize: '32px', marginBottom: '16px', opacity: 0.5 }}>◇</div>
-          <div style={{ fontWeight: 600, color: '#fff', marginBottom: '6px', fontFamily: "'Sora', sans-serif", fontSize: '16px', letterSpacing: '-0.02em' }}>
-            {isForYou ? 'No drops from followed brands' : 'No drops found'}
-          </div>
-          <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            {isForYou ? 'Follow brands to see their drops here' : 'Try a different filter'}
-          </div>
+          <div style={{ fontWeight: 600, color: '#fff', marginBottom: '6px', fontFamily: "'Sora', sans-serif", fontSize: '16px', letterSpacing: '-0.02em' }}>No drops found</div>
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Try a different filter</div>
         </div>
       )}
     </div>

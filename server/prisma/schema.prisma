@@ -3,17 +3,20 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id              String      @id @default(cuid())
-  email           String      @unique
+  id              String           @id @default(cuid())
+  email           String           @unique
   name            String
-  password        String?
-  role            String      @default("user")
-  googleId        String?     @unique
+  password        String
+  role            String           @default("user") // "user", "brand", "admin", "super_admin"
+  isBanned        Boolean          @default(false)
+  bannedAt        DateTime?
+  lastLoginAt     DateTime?
   avatar          String?
   bio             String?
   username        String?
@@ -25,9 +28,12 @@ model User {
   likes           Like[]
   follows         Follow[]
   dropEntries     DropEntry[]
-  notifications   DropNotification[]
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  activityLogs    ActivityLog[]
+  adminActions    AdminActionLog[] @relation("AdminActions")
+  flagsCreated    ContentFlag[]    @relation("FlaggedBy")
+  flagsReviewed   ContentFlag[]    @relation("ReviewedBy")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model Brand {
@@ -35,7 +41,6 @@ model Brand {
   name      String   @unique
   logo      String
   website   String?
-  category  String?
   drops     Drop[]
   followers Follow[]
   createdAt DateTime @default(now())
@@ -46,7 +51,6 @@ model Drop {
   title       String
   description String
   imageUrl    String
-  imageUrls   String[]      @default([])
   price       String
   category    String
   hypeScore   Int         @default(0)
@@ -61,11 +65,12 @@ model Drop {
   comments    Comment[]
   saves       SavedDrop[]
   entries     DropEntry[]
-  notifications DropNotification[]
-  notifiedAt DateTime?
   views       Int         @default(0)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+
+  @@index([brandId])
+  @@index([category])
 }
 
 model Comment {
@@ -76,26 +81,35 @@ model Comment {
   drop      Drop     @relation(fields: [dropId], references: [id])
   dropId    String
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([dropId])
 }
 
 model SavedDrop {
-  id     String @id @default(cuid())
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
-  drop   Drop   @relation(fields: [dropId], references: [id])
-  dropId String
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  drop      Drop     @relation(fields: [dropId], references: [id])
+  dropId    String
+  createdAt DateTime @default(now())
 
   @@unique([userId, dropId])
+  @@index([userId])
+  @@index([dropId])
 }
 
 model Like {
-  id     String @id @default(cuid())
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
-  drop   Drop   @relation(fields: [dropId], references: [id])
-  dropId String
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  drop      Drop     @relation(fields: [dropId], references: [id])
+  dropId    String
+  createdAt DateTime @default(now())
 
   @@unique([userId, dropId])
+  @@index([userId])
+  @@index([dropId])
 }
 
 model Follow {
@@ -107,6 +121,8 @@ model Follow {
   createdAt DateTime @default(now())
 
   @@unique([userId, brandId])
+  @@index([userId])
+  @@index([brandId])
 }
 
 model DropEntry {
@@ -119,16 +135,61 @@ model DropEntry {
   createdAt DateTime @default(now())
 
   @@unique([userId, dropId])
+  @@index([userId])
+  @@index([dropId])
 }
 
-model DropNotification {
+// ─── Admin System Models ──────────────────────────────────────────
+
+model ActivityLog {
   id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  drop      Drop     @relation(fields: [dropId], references: [id])
-  dropId    String
-  emailed   Boolean  @default(false)
+  action    String   // "login", "signup", "create_drop", "like", "comment", etc.
+  entity    String?  // "drop", "comment", "brand", "user", etc.
+  entityId  String?  // ID of the affected entity
+  metadata  Json?    // Extra context (IP, user agent, old/new values)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
   createdAt DateTime @default(now())
 
-  @@unique([userId, dropId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model AdminActionLog {
+  id         String   @id @default(cuid())
+  action     String   // "ban_user", "unban_user", "delete_user", "delete_drop", "flag_content", etc.
+  targetType String   // "user", "drop", "comment"
+  targetId   String   // ID of the affected entity
+  reason     String?  // Why the admin took this action
+  metadata   Json?    // Snapshot of what was affected (e.g. deleted user data)
+  admin      User     @relation("AdminActions", fields: [adminId], references: [id])
+  adminId    String
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+model ContentFlag {
+  id           String    @id @default(cuid())
+  targetType   String    // "drop", "comment"
+  targetId     String
+  reason       String    // "spam", "inappropriate", "misleading", "harassment", "other"
+  status       String    @default("pending") // "pending", "reviewed", "dismissed"
+  notes        String?   // Admin review notes
+  flaggedBy    User      @relation("FlaggedBy", fields: [flaggedById], references: [id])
+  flaggedById  String
+  reviewedBy   User?     @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById String?
+  createdAt    DateTime  @default(now())
+  reviewedAt   DateTime?
+
+  @@index([status])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@index([flaggedById])
 }

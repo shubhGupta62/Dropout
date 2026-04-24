@@ -1,0 +1,555 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Dropamyn Admin Console — Terminal UI
+   No gradients. No shadows. No glass. Pure function.
+   ═══════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --bg:      #0d1117;
+  --surface: #161b22;
+  --border:  #30363d;
+  --text:    #c9d1d9;
+  --muted:   #8b949e;
+  --accent:  #58a6ff;
+  --red:     #ff7b72;
+  --green:   #3fb950;
+  --yellow:  #d29922;
+  --font:    'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --fs-xs:   11px;
+  --fs-sm:   12px;
+  --fs-base: 13px;
+  --fs-lg:   15px;
+}
+
+[data-theme="light"] {
+  --bg:      #ffffff;
+  --surface: #f6f8fa;
+  --border:  #d0d7de;
+  --text:    #1f2328;
+  --muted:   #656d76;
+  --accent:  #0969da;
+  --red:     #cf222e;
+  --green:   #1a7f37;
+  --yellow:  #9a6700;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  font-size: var(--fs-base);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Utility ─────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+.muted  { color: var(--muted); }
+
+/* ─── Login ───────────────────────────────────────────────────── */
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.login-box {
+  width: min(380px, 90vw);
+  padding: 32px 28px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.login-title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.login-sub {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  margin-bottom: 24px;
+}
+
+.login-box label {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  margin-top: 14px;
+}
+
+.login-box label:first-of-type { margin-top: 0; }
+
+.login-box input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-base);
+}
+
+.login-box input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.login-box button[type="submit"] {
+  width: 100%;
+  margin-top: 20px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.login-box button[type="submit"]:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.login-box button[type="submit"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.login-error {
+  margin-top: 12px;
+  color: var(--red);
+  font-size: var(--fs-sm);
+}
+
+/* ─── Shell Layout ────────────────────────────────────────────── */
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+}
+
+.sidebar {
+  padding: 16px 12px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 0 8px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.nav {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  text-align: left;
+  font-family: var(--font);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.nav:hover { color: var(--text); }
+
+.nav.active {
+  color: var(--accent);
+  background: transparent;
+}
+
+.nav.active::before {
+  content: '> ';
+  color: var(--accent);
+}
+
+.sidebar-spacer { flex: 1; }
+
+.admin-info {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.admin-name {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.admin-role {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.logout-btn {
+  color: var(--red) !important;
+  margin-top: 4px;
+}
+
+.logout-btn:hover { opacity: 0.8; }
+
+/* ─── Content ─────────────────────────────────────────────────── */
+.content {
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.topbar {
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar h1 {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.topbar p {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px 0 8px;
+}
+
+.section-head h2 {
+  font-size: var(--fs-base);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+/* ─── Status ──────────────────────────────────────────────────── */
+.status {
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  font-size: var(--fs-sm);
+  border-left: 3px solid var(--border);
+}
+
+.status.info    { border-left-color: var(--accent); color: var(--accent); }
+.status.success { border-left-color: var(--green);  color: var(--green); }
+.status.error   { border-left-color: var(--red);    color: var(--red); }
+
+/* ─── Views ───────────────────────────────────────────────────── */
+.view { display: none; }
+.view.active { display: block; }
+
+/* ─── Stats Grid (terminal style) ─────────────────────────────── */
+.stats-grid,
+.analytics-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1px;
+  border: 1px solid var(--border);
+  background: var(--border);
+}
+
+.stat-item {
+  padding: 12px 14px;
+  background: var(--bg);
+}
+
+.stat-label {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ─── Tables ──────────────────────────────────────────────────── */
+.table-wrap {
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 6px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+th {
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+tr:last-child td { border-bottom: none; }
+
+/* ─── Buttons ─────────────────────────────────────────────────── */
+button {
+  font-family: var(--font);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.small-btn,
+.refresh-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--fs-xs);
+}
+
+.small-btn:hover,
+.refresh-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.danger-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--red);
+  font-size: var(--fs-xs);
+}
+
+.danger-btn:hover {
+  background: var(--red);
+  color: var(--bg);
+}
+
+.link-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* ─── Drop Detail Modal ───────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: min(600px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 24px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.modal-close:hover { color: var(--red); }
+
+.modal-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  font-size: var(--fs-sm);
+  margin-bottom: 16px;
+}
+
+.modal-meta dt {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.5px;
+}
+
+.modal-meta dd { color: var(--text); }
+
+.modal-desc {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.6;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.modal-image {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+/* ─── Settings Panel ──────────────────────────────────────────── */
+.settings-list {
+  list-style: none;
+}
+
+.settings-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+
+.settings-list li:last-child { border-bottom: none; }
+
+.toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  cursor: pointer;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  top: 3px;
+  background: var(--muted);
+}
+
+.toggle input:checked + .toggle-slider {
+  background: var(--accent);
+}
+
+.toggle input:checked + .toggle-slider::before {
+  left: 19px;
+  background: var(--bg);
+}
+
+/* ─── Sparkline (minimal line chart) ──────────────────────────── */
+.sparkline-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sparkline-item {
+  border: 1px solid var(--border);
+  padding: 12px;
+}
+
+.sparkline-label {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sparkline-value {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 4px 0 8px;
+}
+
+.sparkline-canvas {
+  width: 100%;
+  height: 40px;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+  }
+  .brand { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .sidebar-spacer { display: none; }
+  .admin-info { border-top: none; margin-top: 0; }
+}

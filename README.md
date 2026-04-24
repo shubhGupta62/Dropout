@@ -36,6 +36,18 @@ npm run dev
 # Open http://localhost:3000
 ```
 
+## Admin Console
+
+```bash
+# one-time install
+npm run admin:install
+
+# run private admin console
+npm run admin:dev
+
+# Open http://localhost:3200
+```
+
 ## 📁 Project Structure
 
 ```

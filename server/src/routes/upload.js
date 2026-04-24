@@ -1,49 +1,55 @@
+/**
+ * routes/upload.js — Image upload and deletion via Cloudinary.
+ *
+ * Upload is protected by requireAuth. Deletion validates the
+ * publicId param via Zod. Multer handles file size and MIME filtering.
+ */
+
 const express = require('express');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const { requireAuth } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
+const ApiError = require('../utils/ApiError');
+const { sendSuccess } = require('../utils/response');
+const { deleteUploadSchema } = require('../utils/schemas');
 
 const router = express.Router();
 
-// Configure Cloudinary
+// ─── Cloudinary config ────────────────────────────────────────────
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
+  api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Multer — memory storage with strict limits
+// ─── Multer config — memory storage, 10 MB max, images only ──────
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // SECURITY: Reduced to 5MB max
-  fileFilter: (req, file, cb) => {
-    // SECURITY: Whitelist specific image MIME types (not just startsWith)
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (allowedMimes.includes(file.mimetype)) {
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
-      cb(new Error('Only JPEG, PNG, WebP, and GIF images are allowed'), false);
+      cb(ApiError.badRequest('Only image files are allowed'), false);
     }
   },
 });
 
-// SECURITY: Whitelist of allowed upload folders
-const ALLOWED_FOLDERS = ['dropout', 'dropout_avatars', 'dropout_drops'];
-
-// POST /api/upload — SECURITY: Requires auth
-router.post('/', requireAuth, upload.single('image'), async (req, res) => {
+// ─── POST /api/upload ─────────────────────────────────────────────
+router.post('/', requireAuth, upload.single('image'), async (req, res, next) => {
   try {
+    // Step 1: Ensure a file was actually uploaded.
     if (!req.file) {
-      return res.status(400).json({ error: 'No image file provided' });
+      throw ApiError.badRequest('No image file provided');
     }
 
-    // SECURITY: Validate folder name against whitelist
-    let folder = 'dropout';
-    if (typeof req.body?.folder === 'string' && ALLOWED_FOLDERS.includes(req.body.folder.trim())) {
-      folder = req.body.folder.trim();
-    }
+    // Step 2: Sanitize the folder name — only allow safe characters.
+    const rawFolder = typeof req.body?.folder === 'string' ? req.body.folder.trim() : '';
+    const folder = /^[a-zA-Z0-9_-]+$/.test(rawFolder) ? rawFolder : 'dropout';
 
+    // Step 3: Stream the buffer to Cloudinary.
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
@@ -53,53 +59,34 @@ router.post('/', requireAuth, upload.single('image'), async (req, res) => {
             { width: 1080, height: 1080, crop: 'limit', quality: 'auto', format: 'webp' },
           ],
         },
-        (error, result) => {
+        (error, uploadResult) => {
           if (error) reject(error);
-          else resolve(result);
-        }
+          else resolve(uploadResult);
+        },
       );
       stream.end(req.file.buffer);
     });
 
-    res.json({
-      url: result.secure_url,
+    return sendSuccess(res, 'Image uploaded successfully', {
+      url:      result.secure_url,
       publicId: result.public_id,
-      width: result.width,
-      height: result.height,
-      format: result.format,
-      bytes: result.bytes,
-    });
+      width:    result.width,
+      height:   result.height,
+      format:   result.format,
+      bytes:    result.bytes,
+    }, 201);
   } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'Failed to upload image' });
+    next(err);
   }
 });
 
-// DELETE /api/upload — SECURITY: Requires auth + brand role
-// publicId sent as query param to handle slashes in Cloudinary IDs
-router.delete('/', requireAuth, async (req, res) => {
+// ─── DELETE /api/upload/:publicId ─────────────────────────────────
+router.delete('/:publicId', requireAuth, validate(deleteUploadSchema), async (req, res, next) => {
   try {
-    // SECURITY: Only brand accounts can delete images
-    if (req.user.role !== 'brand') {
-      return res.status(403).json({ error: 'Only brand accounts can delete images' });
-    }
-
-    const publicId = req.query.publicId;
-    if (!publicId || typeof publicId !== 'string') {
-      return res.status(400).json({ error: 'publicId query parameter is required' });
-    }
-
-    // SECURITY: Validate the publicId is within allowed folders
-    const isAllowedFolder = ALLOWED_FOLDERS.some(f => publicId.startsWith(f + '/'));
-    if (!isAllowedFolder) {
-      return res.status(403).json({ error: 'Cannot delete images outside allowed folders' });
-    }
-
-    await cloudinary.uploader.destroy(publicId);
-    res.json({ deleted: true });
+    await cloudinary.uploader.destroy(req.params.publicId);
+    return sendSuccess(res, 'Image deleted successfully');
   } catch (err) {
-    console.error('Delete error:', err);
-    res.status(500).json({ error: 'Failed to delete image' });
+    next(err);
   }
 });
 

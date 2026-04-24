@@ -1,13 +1,34 @@
+/**
+ * @file routes/drops.js
+ * @summary Drop CRUD, likes, comments, views, raffle entry.
+ * @models Drop, Like, Comment, SavedDrop, DropEntry, Follow
+ * @endpoints GET /api/drops, GET /api/drops/trending, GET /api/drops/:id,
+ *            POST /api/drops, PUT /api/drops/:id/like, PUT /api/drops/:id/unlike,
+ *            POST /api/drops/:id/comments, PUT /api/drops/:id/view, POST /api/drops/:id/enter
+ * @dependencies lib/prisma, middleware/auth, utils/hypeScore
+ */
+
 const express = require('express');
-const prisma = require('../utils/prisma');
+const prisma = require('../lib/prisma');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { recordActivity } = require('../middleware/activityLogger');
+const { requireRole } = require('../middleware/roleCheck');
+const { validate } = require('../middleware/validate');
 const { recalculateHypeScore } = require('../utils/hypeScore');
-const { sanitizeText, validateDropInput } = require('../utils/sanitize');
-const { sendDropLiveEmail } = require('../utils/email');
+const ApiError = require('../utils/ApiError');
+const { sendSuccess } = require('../utils/response');
+const {
+  listDropsSchema,
+  dropIdParamSchema,
+  createDropSchema,
+  commentSchema,
+} = require('../utils/schemas');
 
 const router = express.Router();
 
-// Helper: build drop include
+// ─── Helpers ───────────────────────────────────────────────────────
+
+/** Standard Prisma include for drop list queries. */
 function dropInclude() {
   return {
     brand: { include: { _count: { select: { followers: true } } } },
@@ -15,347 +36,335 @@ function dropInclude() {
   };
 }
 
-// Helper: add isLiked, isSaved, isEntered, isFollowingBrand flags
-async function enrichDrop(drop, userId) {
-  if (!userId) return { ...drop, isLiked: false, isSaved: false, isEntered: false, isFollowingBrand: false };
+/**
+ * Batch-enrich a list of drops with user interaction flags.
+ * Uses 4 queries total instead of 4×N (fixes N+1 problem).
+ */
+async function batchEnrichDrops(drops, userId) {
+  if (!userId || drops.length === 0) {
+    return drops.map((d) => ({ ...d, isLiked: false, isSaved: false, isEntered: false, isFollowingBrand: false }));
+  }
 
-  const [like, save, entry, follow] = await Promise.all([
-    prisma.like.findUnique({ where: { userId_dropId: { userId, dropId: drop.id } } }),
-    prisma.savedDrop.findUnique({ where: { userId_dropId: { userId, dropId: drop.id } } }),
-    prisma.dropEntry.findUnique({ where: { userId_dropId: { userId, dropId: drop.id } } }),
-    prisma.follow.findUnique({ where: { userId_brandId: { userId, brandId: drop.brandId } } }),
+  const dropIds = drops.map((d) => d.id);
+  const brandIds = [...new Set(drops.map((d) => d.brandId))];
+
+  const [likes, saves, entries, follows] = await Promise.all([
+    prisma.like.findMany({ where: { userId, dropId: { in: dropIds } }, select: { dropId: true } }),
+    prisma.savedDrop.findMany({ where: { userId, dropId: { in: dropIds } }, select: { dropId: true } }),
+    prisma.dropEntry.findMany({ where: { userId, dropId: { in: dropIds } }, select: { dropId: true } }),
+    prisma.follow.findMany({ where: { userId, brandId: { in: brandIds } }, select: { brandId: true } }),
   ]);
 
-  return { ...drop, isLiked: !!like, isSaved: !!save, isEntered: !!entry, isFollowingBrand: !!follow };
+  const likedSet = new Set(likes.map((l) => l.dropId));
+  const savedSet = new Set(saves.map((s) => s.dropId));
+  const enteredSet = new Set(entries.map((e) => e.dropId));
+  const followedSet = new Set(follows.map((f) => f.brandId));
+
+  return drops.map((d) => ({
+    ...d,
+    isLiked: likedSet.has(d.id),
+    isSaved: savedSet.has(d.id),
+    isEntered: enteredSet.has(d.id),
+    isFollowingBrand: followedSet.has(d.brandId),
+  }));
 }
 
-// GET /api/drops — list all drops
-router.get('/', optionalAuth, async (req, res) => {
+// ─── GET /api/drops ────────────────────────────────────────────────
+router.get('/', optionalAuth, validate(listDropsSchema), async (req, res, next) => {
   try {
-    const { category, featured, sort } = req.query;
+    const { category, featured, sort } = req.query || {};
     const where = {};
-    if (category && category !== 'all') where.category = sanitizeText(category, 50);
+    if (category && category !== 'all') where.category = category;
     if (featured === 'true') where.featured = true;
 
-    const orderBy = sort === 'hype' ? { hypeScore: 'desc' }
-                  : sort === 'date' ? { dropTime: 'asc' }
-                  : { createdAt: 'desc' };
+    const orderBy =
+      sort === 'hype'  ? { hypeScore: 'desc' } :
+      sort === 'date'  ? { dropTime: 'asc' }   :
+                         { createdAt: 'desc' };
 
     const drops = await prisma.drop.findMany({ where, orderBy, include: dropInclude() });
-    const enriched = await Promise.all(drops.map(d => enrichDrop(d, req.user?.id)));
-    res.json(enriched);
+    const enriched = await batchEnrichDrops(drops, req.user?.id);
+
+    return sendSuccess(res, 'Drops retrieved successfully', enriched);
   } catch (err) {
-    console.error('GET /api/drops error:', err);
-    res.status(500).json({ error: 'Failed to fetch drops' });
+    next(err);
   }
 });
 
-// GET /api/drops/following — personalized feed
-router.get('/following', requireAuth, async (req, res) => {
+// ─── GET /api/drops/trending ───────────────────────────────────────
+router.get('/trending', optionalAuth, async (req, res, next) => {
   try {
-    const userId = req.user.id;
-    const { category } = req.query;
+    const drops = await prisma.drop.findMany({
+      orderBy: { hypeScore: 'desc' },
+      take: 10,
+      include: dropInclude(),
+    });
 
-    const follows = await prisma.follow.findMany({ where: { userId }, select: { brandId: true } });
-    const brandIds = follows.map(f => f.brandId);
-    if (brandIds.length === 0) return res.json([]);
+    const enriched = await batchEnrichDrops(drops, req.user?.id);
 
-    const where = { brandId: { in: brandIds } };
-    if (category && category !== 'all') where.category = sanitizeText(category, 50);
-
-    const drops = await prisma.drop.findMany({ where, orderBy: { createdAt: 'desc' }, include: dropInclude() });
-    const enriched = await Promise.all(drops.map(d => enrichDrop(d, userId)));
-    res.json(enriched);
+    return sendSuccess(res, 'Trending drops retrieved successfully', enriched);
   } catch (err) {
-    console.error('GET /api/drops/following error:', err);
-    res.status(500).json({ error: 'Failed to fetch personalized feed' });
+    next(err);
   }
 });
 
-// GET /api/drops/trending — top 10
-router.get('/trending', optionalAuth, async (req, res) => {
+// ─── GET /api/drops/:id ───────────────────────────────────────────
+router.get('/:id', optionalAuth, validate(dropIdParamSchema), async (req, res, next) => {
   try {
-    const drops = await prisma.drop.findMany({ orderBy: { hypeScore: 'desc' }, take: 10, include: dropInclude() });
-    const enriched = await Promise.all(drops.map(d => enrichDrop(d, req.user?.id)));
-    res.json(enriched);
-  } catch (err) {
-    console.error('GET /api/drops/trending error:', err);
-    res.status(500).json({ error: 'Failed to fetch trending' });
-  }
-});
+    const { id } = req.params;
 
-// GET /api/drops/:id — single drop
-router.get('/:id', optionalAuth, async (req, res) => {
-  try {
     const drop = await prisma.drop.findUnique({
-      where: { id: req.params.id },
+      where: { id },
       include: {
         brand: { include: { _count: { select: { followers: true } } } },
-        comments: { include: { user: { select: { id: true, name: true, username: true, avatar: true } } }, orderBy: { createdAt: 'desc' }, take: 50 },
+        comments: {
+          include: { user: true },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        },
         _count: { select: { comments: true, saves: true, likes: true, entries: true } },
       },
     });
-    if (!drop) return res.status(404).json({ error: 'Drop not found' });
-    const enriched = await enrichDrop(drop, req.user?.id);
-    res.json(enriched);
+
+    if (!drop) {
+      throw ApiError.notFound('Drop not found');
+    }
+
+    const [enriched] = await batchEnrichDrops([drop], req.user?.id);
+
+    return sendSuccess(res, 'Drop retrieved successfully', enriched);
   } catch (err) {
-    console.error('GET /api/drops/:id error:', err);
-    res.status(500).json({ error: 'Failed to fetch drop' });
+    next(err);
   }
 });
 
-// POST /api/drops — create a new drop (IDOR-safe: brand verification)
-router.post('/', requireAuth, async (req, res) => {
+// ─── POST /api/drops ──────────────────────────────────────────────
+router.post('/', requireAuth, requireRole('brand'), validate(createDropSchema), async (req, res, next) => {
   try {
-    if (req.user.role !== 'brand') {
-      return res.status(403).json({ error: 'Only brand accounts can create drops' });
-    }
-
-    // SECURITY: Validate all input fields
-    const errors = validateDropInput(req.body);
-    if (errors) return res.status(400).json({ error: 'Validation failed', details: errors });
-
-    // SECURITY: IDOR prevention — resolve brandId from authenticated user, don't accept from body
-    const brand = await prisma.brand.findFirst({ where: { name: req.user.name } });
-    if (!brand) {
-      return res.status(403).json({ error: 'No brand profile found for this account' });
-    }
-
-    const { title, description, imageUrl, imageUrls, price, category, dropTime, featured, website, accessType, maxQuantity } = req.body;
-    
-    // Validate & sanitize imageUrls array (max 5)
-    let cleanImageUrls = [];
-    if (Array.isArray(imageUrls)) {
-      cleanImageUrls = imageUrls.filter(u => typeof u === 'string' && u.trim()).slice(0, 5).map(u => u.trim());
-    }
+    const {
+      title, description, imageUrl, price, category,
+      dropTime, featured, website, brandId, accessType, maxQuantity,
+    } = req.body;
 
     const drop = await prisma.drop.create({
       data: {
-        title: sanitizeText(title, 200),
-        description: sanitizeText(description, 2000),
-        imageUrl: imageUrl.trim(),
-        imageUrls: cleanImageUrls,
-        price: sanitizeText(price || '', 50),
-        category: sanitizeText(category, 50),
+        title,
+        description,
+        imageUrl,
+        price,
+        category,
         hypeScore: 0,
         dropTime: new Date(dropTime),
-        featured: featured === true,
-        website: website ? website.trim().slice(0, 500) : null,
-        brandId: brand.id,
-        accessType: ['open', 'raffle', 'waitlist', 'invite'].includes(accessType) ? accessType : 'open',
-        maxQuantity: maxQuantity ? Math.min(parseInt(maxQuantity) || 0, 100000) : null,
+        featured: featured || false,
+        website: website || null,
+        brandId,
+        accessType: accessType || 'open',
+        maxQuantity: maxQuantity ? parseInt(maxQuantity, 10) : null,
       },
       include: { brand: true },
     });
-    res.status(201).json(drop);
+
+    await recordActivity({
+      action: 'create_drop',
+      entity: 'drop',
+      entityId: drop.id,
+      userId: req.user.id,
+      metadata: {
+        title: drop.title,
+        category: drop.category,
+        brandId: drop.brandId,
+      },
+    });
+
+    return sendSuccess(res, 'Drop created successfully', drop, 201);
   } catch (err) {
-    console.error('POST /api/drops error:', err);
-    res.status(500).json({ error: 'Failed to create drop' });
+    next(err);
   }
 });
 
-// PUT /api/drops/:id/like — toggle like
-router.put('/:id/like', requireAuth, async (req, res) => {
+// ─── PUT /api/drops/:id/like ──────────────────────────────────────
+router.put('/:id/like', requireAuth, validate(dropIdParamSchema), async (req, res, next) => {
   try {
     const userId = req.user.id;
     const dropId = req.params.id;
-    const existing = await prisma.like.findUnique({ where: { userId_dropId: { userId, dropId } } });
-    if (existing) { await prisma.like.delete({ where: { id: existing.id } }); }
-    else { await prisma.like.create({ data: { userId, dropId } }); }
+
+    const existing = await prisma.like.findUnique({
+      where: { userId_dropId: { userId, dropId } },
+    });
+
+    if (existing) {
+      await prisma.like.delete({ where: { id: existing.id } });
+    } else {
+      await prisma.like.create({ data: { userId, dropId } });
+    }
+
     const newScore = await recalculateHypeScore(dropId);
     const likeCount = await prisma.like.count({ where: { dropId } });
-    res.json({ liked: !existing, likes: likeCount, hypeScore: newScore });
+
+    await recordActivity({
+      action: existing ? 'unlike_drop' : 'like_drop',
+      entity: 'drop',
+      entityId: dropId,
+      userId,
+      metadata: {
+        likes: likeCount,
+        hypeScore: newScore,
+      },
+    });
+
+    return sendSuccess(res, existing ? 'Drop unliked' : 'Drop liked', {
+      liked: !existing,
+      likes: likeCount,
+      hypeScore: newScore,
+    });
   } catch (err) {
-    console.error('PUT /api/drops/:id/like error:', err);
-    res.status(500).json({ error: 'Failed to toggle like' });
+    next(err);
   }
 });
 
-// PUT /api/drops/:id/unlike — backward compat
-router.put('/:id/unlike', requireAuth, async (req, res) => {
+// ─── PUT /api/drops/:id/unlike (backward compat) ──────────────────
+router.put('/:id/unlike', requireAuth, validate(dropIdParamSchema), async (req, res, next) => {
   try {
     const userId = req.user.id;
     const dropId = req.params.id;
-    const existing = await prisma.like.findUnique({ where: { userId_dropId: { userId, dropId } } });
-    if (existing) { await prisma.like.delete({ where: { id: existing.id } }); }
+
+    const existing = await prisma.like.findUnique({
+      where: { userId_dropId: { userId, dropId } },
+    });
+
+    if (existing) {
+      await prisma.like.delete({ where: { id: existing.id } });
+    }
+
     const newScore = await recalculateHypeScore(dropId);
     const likeCount = await prisma.like.count({ where: { dropId } });
-    res.json({ liked: false, likes: likeCount, hypeScore: newScore });
+
+    return sendSuccess(res, 'Drop unliked', {
+      liked: false,
+      likes: likeCount,
+      hypeScore: newScore,
+    });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to unlike drop' });
+    next(err);
   }
 });
 
-// POST /api/drops/:id/comments — sanitized comment
-router.post('/:id/comments', requireAuth, async (req, res) => {
+// ─── POST /api/drops/:id/comments ─────────────────────────────────
+router.post('/:id/comments', requireAuth, validate(commentSchema), async (req, res, next) => {
   try {
-    const text = sanitizeText(req.body.text, 500);
-    if (!text) return res.status(400).json({ error: 'Comment text is required' });
+    const { text } = req.body;
+    const dropId = req.params.id;
 
     const comment = await prisma.comment.create({
-      data: { text, userId: req.user.id, dropId: req.params.id },
-      include: { user: { select: { id: true, name: true, username: true, avatar: true } } },
+      data: { text: text.trim(), userId: req.user.id, dropId },
+      include: { user: true },
     });
-    await recalculateHypeScore(req.params.id);
-    res.status(201).json(comment);
+
+    await recalculateHypeScore(dropId);
+
+    await recordActivity({
+      action: 'comment_drop',
+      entity: 'comment',
+      entityId: comment.id,
+      userId: req.user.id,
+      metadata: {
+        dropId,
+      },
+    });
+
+    return sendSuccess(res, 'Comment added successfully', comment, 201);
   } catch (err) {
-    console.error('POST /api/drops/:id/comments error:', err);
-    res.status(500).json({ error: 'Failed to add comment' });
+    next(err);
   }
 });
 
-// PUT /api/drops/:id/view — deduplicated view tracking (requires auth)
-router.put('/:id/view', optionalAuth, async (req, res) => {
+// ─── PUT /api/drops/:id/view ──────────────────────────────────────
+router.put('/:id/view', validate(dropIdParamSchema), async (req, res, next) => {
   try {
-    // Only count views from authenticated users (basic dedup)
-    if (!req.user) {
-      return res.json({ views: 0, message: 'View not counted (unauthenticated)' });
-    }
     const drop = await prisma.drop.update({
       where: { id: req.params.id },
       data: { views: { increment: 1 } },
     });
+
     await recalculateHypeScore(req.params.id);
-    res.json({ views: drop.views });
+
+    if (req.user?.id) {
+      await recordActivity({
+        action: 'view_drop',
+        entity: 'drop',
+        entityId: req.params.id,
+        userId: req.user.id,
+        metadata: {
+          views: drop.views,
+        },
+      });
+    }
+
+    return sendSuccess(res, 'View recorded', { views: drop.views });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to track view' });
+    next(err);
   }
 });
 
-// POST /api/drops/:id/enter — enter raffle/waitlist
-router.post('/:id/enter', requireAuth, async (req, res) => {
+// ─── POST /api/drops/:id/enter ────────────────────────────────────
+router.post('/:id/enter', requireAuth, validate(dropIdParamSchema), async (req, res, next) => {
   try {
     const dropId = req.params.id;
     const userId = req.user.id;
+
+    // Step 1: Fetch the drop to check access rules.
     const drop = await prisma.drop.findUnique({
       where: { id: dropId },
       select: { accessType: true, maxQuantity: true, _count: { select: { entries: true } } },
     });
-    if (!drop) return res.status(404).json({ error: 'Drop not found' });
-    if (drop.accessType === 'open') return res.status(400).json({ error: 'This is an open drop' });
-    if (drop.accessType === 'invite') return res.status(403).json({ error: 'This drop is invite-only' });
 
-    const existing = await prisma.dropEntry.findUnique({ where: { userId_dropId: { userId, dropId } } });
-    if (existing) return res.json({ entered: true, status: existing.status, message: 'Already entered' });
-
-    if (drop.maxQuantity && drop._count.entries >= drop.maxQuantity) {
-      return res.status(400).json({ error: 'This drop is full' });
+    if (!drop) {
+      throw ApiError.notFound('Drop not found');
     }
 
-    const entry = await prisma.dropEntry.create({ data: { userId, dropId } });
-    await recalculateHypeScore(dropId);
-    res.status(201).json({ entered: true, status: entry.status, entryId: entry.id });
-  } catch (err) {
-    console.error('POST /api/drops/:id/enter error:', err);
-    res.status(500).json({ error: 'Failed to enter drop' });
-  }
-});
-
-// DELETE /api/drops/:id — delete a drop (IDOR-safe: brand owner only)
-router.delete('/:id', requireAuth, async (req, res) => {
-  try {
-    if (req.user.role !== 'brand') {
-      return res.status(403).json({ error: 'Only brand accounts can delete drops' });
+    // Step 2: Enforce access-type restrictions.
+    if (drop.accessType === 'open') {
+      throw ApiError.badRequest('This is an open drop — no entry needed');
     }
-    const brand = await prisma.brand.findFirst({ where: { name: req.user.name } });
-    if (!brand) return res.status(403).json({ error: 'No brand profile found' });
+    if (drop.accessType === 'invite') {
+      throw ApiError.forbidden('This drop is invite-only');
+    }
 
-    const drop = await prisma.drop.findUnique({ where: { id: req.params.id } });
-    if (!drop) return res.status(404).json({ error: 'Drop not found' });
-    if (drop.brandId !== brand.id) return res.status(403).json({ error: 'You can only delete your own drops' });
-
-    // Delete related records first
-    await prisma.like.deleteMany({ where: { dropId: drop.id } });
-    await prisma.comment.deleteMany({ where: { dropId: drop.id } });
-    await prisma.savedDrop.deleteMany({ where: { dropId: drop.id } });
-    await prisma.dropEntry.deleteMany({ where: { dropId: drop.id } });
-    await prisma.dropNotification.deleteMany({ where: { dropId: drop.id } });
-    await prisma.drop.delete({ where: { id: drop.id } });
-
-    res.json({ deleted: true });
-  } catch (err) {
-    console.error('DELETE /api/drops/:id error:', err);
-    res.status(500).json({ error: 'Failed to delete drop' });
-  }
-});
-
-// PUT /api/drops/:id/notify — toggle drop notification
-router.put('/:id/notify', requireAuth, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const dropId = req.params.id;
-    const existing = await prisma.dropNotification.findUnique({
+    // Step 3: Check if already entered.
+    const existing = await prisma.dropEntry.findUnique({
       where: { userId_dropId: { userId, dropId } },
     });
     if (existing) {
-      await prisma.dropNotification.delete({ where: { id: existing.id } });
-      res.json({ notified: false });
-    } else {
-      await prisma.dropNotification.create({ data: { userId, dropId } });
-      res.json({ notified: true });
+      return sendSuccess(res, 'Already entered', { entered: true, status: existing.status });
     }
-  } catch (err) {
-    console.error('PUT /api/drops/:id/notify error:', err);
-    res.status(500).json({ error: 'Failed to toggle notification' });
-  }
-});
 
-// GET /api/drops/:id/notify — check if user is notified
-router.get('/:id/notify', requireAuth, async (req, res) => {
-  try {
-    const existing = await prisma.dropNotification.findUnique({
-      where: { userId_dropId: { userId: req.user.id, dropId: req.params.id } },
-    });
-    res.json({ notified: !!existing });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to check notification' });
-  }
-});
+    // Step 4: Check capacity.
+    if (drop.maxQuantity && drop._count.entries >= drop.maxQuantity) {
+      throw ApiError.badRequest('This drop is full');
+    }
 
-// POST /api/drops/send-notifications — cron: email users for drops that just went live
-// Call this periodically (e.g. every 5 min) from an external cron service or Render Cron Job
-router.post('/send-notifications', async (req, res) => {
-  try {
-    // Find drops that are now live (dropTime <= now) but haven't been notified yet
-    const now = new Date();
-    const liveDrops = await prisma.drop.findMany({
-      where: {
-        dropTime: { lte: now },
-        notifiedAt: null,
-      },
-      include: {
-        brand: true,
-        notifications: {
-          where: { emailed: false },
-          include: { user: { select: { id: true, email: true, name: true } } },
-        },
+    // Step 5: Create the entry.
+    const entry = await prisma.dropEntry.create({ data: { userId, dropId } });
+    await recalculateHypeScore(dropId);
+
+    await recordActivity({
+      action: 'enter_drop',
+      entity: 'drop_entry',
+      entityId: entry.id,
+      userId,
+      metadata: {
+        dropId,
+        status: entry.status,
       },
     });
 
-    let emailsSent = 0;
-    for (const drop of liveDrops) {
-      // Send email to each notified user
-      for (const notification of drop.notifications) {
-        if (notification.user.email) {
-          await sendDropLiveEmail(notification.user.email, notification.user.name, drop);
-          await prisma.dropNotification.update({
-            where: { id: notification.id },
-            data: { emailed: true },
-          });
-          emailsSent++;
-        }
-      }
-      // Mark drop as notified
-      await prisma.drop.update({
-        where: { id: drop.id },
-        data: { notifiedAt: now },
-      });
-    }
-
-    res.json({ processed: liveDrops.length, emailsSent });
+    return sendSuccess(res, 'Successfully entered drop', {
+      entered: true,
+      status: entry.status,
+      entryId: entry.id,
+    }, 201);
   } catch (err) {
-    console.error('POST /api/drops/send-notifications error:', err);
-    res.status(500).json({ error: 'Failed to process notifications' });
+    next(err);
   }
 });
 

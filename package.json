@@ -7,7 +7,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "server:dev": "npm --prefix server run dev",
+    "server:start": "npm --prefix server run start",
+    "server:db:push": "npm --prefix server run db:push",
+    "server:seed:admin": "npm --prefix server run seed:admin",
+    "admin:install": "npm --prefix admin-console install",
+    "admin:dev": "npm --prefix admin-console run dev",
+    "admin:start": "npm --prefix admin-console run start"
   },
   "dependencies": {
     "next": "16.1.6",

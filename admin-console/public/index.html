@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dropamyn // admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- ── Login ─────────────────────────────────────────────────── -->
+    <div id="loginScreen" class="login-screen">
+      <div class="login-box">
+        <div class="login-title">dropamyn</div>
+        <div class="login-sub">admin console</div>
+        <form id="loginForm" autocomplete="on">
+          <label for="loginEmail">email</label>
+          <input id="loginEmail" type="email" placeholder="admin@dropamyn.com" required autocomplete="email" />
+          <label for="loginPassword">password</label>
+          <input id="loginPassword" type="password" placeholder="••••••••" required autocomplete="current-password" />
+          <button id="loginBtn" type="submit">login</button>
+          <div id="loginError" class="login-error hidden"></div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Dashboard ─────────────────────────────────────────────── -->
+    <div id="dashboardScreen" class="shell hidden">
+      <aside class="sidebar">
+        <div class="brand">dropamyn</div>
+        <button class="nav active" data-view="overview">overview</button>
+        <button class="nav" data-view="users">users</button>
+        <button class="nav" data-view="drops">drops</button>
+        <button class="nav" data-view="analytics">analytics</button>
+        <button class="nav" data-view="settings">settings</button>
+        <div class="sidebar-spacer"></div>
+        <div id="adminInfo" class="admin-info"></div>
+        <button id="logoutBtn" class="nav logout-btn">logout</button>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <h1 id="pageTitle">overview</h1>
+          <p id="pageSub">system status</p>
+        </header>
+
+        <section id="status" class="status hidden"></section>
+
+        <!-- Overview -->
+        <section id="overview" class="view active">
+          <div id="statsGrid" class="stats-grid"></div>
+        </section>
+
+        <!-- Users -->
+        <section id="users" class="view">
+          <div class="section-head">
+            <h2>users</h2>
+            <button id="refreshUsersBtn" class="refresh-btn">refresh</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>name</th>
+                  <th>email</th>
+                  <th>role</th>
+                  <th>created</th>
+                  <th>status</th>
+                  <th>action</th>
+                </tr>
+              </thead>
+              <tbody id="usersTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Drops -->
+        <section id="drops" class="view">
+          <div class="section-head">
+            <h2>drops</h2>
+            <button id="refreshDropsBtn" class="refresh-btn">refresh</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>title</th>
+                  <th>brand</th>
+                  <th>views</th>
+                  <th>likes</th>
+                  <th>comments</th>
+                  <th>action</th>
+                </tr>
+              </thead>
+              <tbody id="dropsTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Analytics -->
+        <section id="analytics" class="view">
+          <div class="section-head">
+            <h2>analytics</h2>
+            <button id="refreshAnalyticsBtn" class="refresh-btn">refresh</button>
+          </div>
+          <div id="sparklineRow" class="sparkline-row"></div>
+          <div id="analyticsCards" class="analytics-cards hidden"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>date</th>
+                  <th>users</th>
+                  <th>drops</th>
+                  <th>likes</th>
+                  <th>comments</th>
+                  <th>brands</th>
+                </tr>
+              </thead>
+              <tbody id="analyticsTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Settings -->
+        <section id="settings" class="view">
+          <div class="section-head">
+            <h2>settings</h2>
+          </div>
+          <ul class="settings-list">
+            <li>
+              <span>theme</span>
+              <label class="toggle">
+                <input type="checkbox" id="themeToggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </li>
+            <li>
+              <span>session</span>
+              <button id="settingsLogoutBtn" class="danger-btn">logout</button>
+            </li>
+          </ul>
+          <div style="margin-top: 16px; color: var(--muted); font-size: 11px;">
+            <div>dropamyn admin console v1.0</div>
+            <div id="sessionInfo"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Drop Detail Modal -->
+    <div id="dropModal" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 id="modalTitle">—</h3>
+          <button id="modalClose" class="modal-close">×</button>
+        </div>
+        <img id="modalImage" class="modal-image hidden" alt="" />
+        <dl id="modalMeta" class="modal-meta"></dl>
+        <div id="modalDesc" class="modal-desc"></div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

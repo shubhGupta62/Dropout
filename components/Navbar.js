@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import { GlassFilter, GlassPanelLayers } from './LiquidGlass';
-import EdgeGlowCard from './EdgeGlowCard';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   getNotifications,
@@ -26,9 +25,6 @@ const navItems = [
   { href: '/feed', label: 'Home', icon: (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
   )},
-  { href: '/feed?mode=foryou', label: 'For You', matchPath: '/feed', matchQuery: 'foryou', icon: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-  )},
   { href: '/trending', label: 'Trending', icon: (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
   )},
@@ -43,12 +39,9 @@ const navItems = [
   )},
 ];
 
-const catIcon = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>;
-
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [expanded, setExpanded] = useState(false);
   const [desktopCatOpen, setDesktopCatOpen] = useState(false);
   const [mobileCatOpen, setMobileCatOpen] = useState(false);
@@ -63,22 +56,28 @@ export default function Sidebar() {
   const userName = storedUser?.name || '';
   const userAvatar = storedUser?.avatar || '';
 
-  const currentMode = searchParams.get('mode');
-  const isForYouActive = pathname === '/feed' && currentMode === 'foryou';
-  const isHomeActive = pathname === '/feed' && currentMode !== 'foryou';
-
   const syncNotifications = () => {
     setNotifications(getNotifications());
     setUnreadCount(getUnreadNotificationsCount());
   };
 
   useEffect(() => {
-    if (!storedUser && getStoredToken()) restoreStoredUserSession();
+    if (!storedUser && getStoredToken()) {
+      restoreStoredUserSession();
+    }
+
     const handleNotificationsChanged = () => syncNotifications();
-    const intervalId = window.setInterval(() => { processDueNotifications(); syncNotifications(); }, 30000);
+    const intervalId = window.setInterval(() => {
+      processDueNotifications();
+      syncNotifications();
+    }, 30000);
+
     window.addEventListener('dropout-notifications-changed', handleNotificationsChanged);
+
+    // Scroll listener for mobile header
     const handleScroll = () => setScrolled(window.scrollY > 30);
     window.addEventListener('scroll', handleScroll, { passive: true });
+
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener('dropout-notifications-changed', handleNotificationsChanged);
@@ -86,48 +85,46 @@ export default function Sidebar() {
     };
   }, [pathname, storedUser]);
 
+  const visibleNavItems = navItems;
   const sidebarWidth = expanded ? 240 : 72;
 
   const openNotifications = async () => {
-    setNotificationOpen((c) => !c);
-    setMobileCatOpen(false);
+    setNotificationOpen((current) => !current);
     processDueNotifications();
     syncNotifications();
     await requestNotificationPermission();
   };
 
-  const handleNotificationClick = (n) => {
-    markNotificationRead(n.id);
+  const handleNotificationClick = (notification) => {
+    markNotificationRead(notification.id);
     setNotificationOpen(false);
-    router.push(`/drop/${n.dropId}`);
+    router.push(`/drop/${notification.dropId}`);
   };
 
-  const formatNotificationTime = (n) => {
-    const date = new Date(n.dropTime);
+  const formatNotificationTime = (notification) => {
+    const date = new Date(notification.dropTime);
     if (Number.isNaN(date.getTime())) return 'Drop scheduled';
-    if (n.notifiedAt) return 'Live now';
+    if (notification.notifiedAt) return 'Live now';
     return `Drops ${date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
-  };
-
-  const isNavActive = (item) => {
-    if (item.matchQuery === 'foryou') return isForYouActive;
-    if (item.href === '/feed') return isHomeActive;
-    return pathname === item.href;
   };
 
   return (
     <>
+      {/* SVG filters for liquid glass */}
       <GlassFilter />
 
       {/* ===== LEFT SIDEBAR (Desktop) ===== */}
       <aside
         onMouseEnter={() => setExpanded(true)}
-        onMouseLeave={() => { setExpanded(false); setDesktopCatOpen(false); }}
+        onMouseLeave={() => setExpanded(false)}
         style={{
           width: `${sidebarWidth}px`,
           transition: 'width 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-          display: 'flex', flexDirection: 'column',
-          position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 50,
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'fixed',
+          left: 0, top: 0, bottom: 0,
+          zIndex: 50,
           overflow: 'hidden',
           background: 'rgba(5,5,10,0.4)',
           borderRight: '1px solid rgba(255,255,255,0.08)',
@@ -135,17 +132,31 @@ export default function Sidebar() {
         }}
         className="hidden md:flex"
       >
+        {/* Clean frosted glass layers (no SVG distortion) */}
         <GlassPanelLayers />
+        {/* Content wrapper — must be above glass layers */}
         <div style={{ position: 'relative', zIndex: 5, display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-        {/* Logo */}
-        <Link href="/feed" style={{
-          display: 'flex', alignItems: 'center',
-          padding: expanded ? '28px 20px 36px' : '28px 0 36px',
-          justifyContent: expanded ? 'flex-start' : 'center',
-          textDecoration: 'none', transition: 'padding 0.3s ease',
-        }}>
+        {/* ---- Logo ---- */}
+        <Link
+          href="/feed"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: expanded ? '28px 20px 36px' : '28px 0 36px',
+            justifyContent: expanded ? 'flex-start' : 'center',
+            textDecoration: 'none',
+            transition: 'padding 0.3s ease',
+          }}
+        >
           {expanded ? (
-            <span style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '-0.04em', color: '#fff', whiteSpace: 'nowrap', fontFamily: "'Sora', sans-serif" }}>
+            <span style={{
+              fontSize: '20px',
+              fontWeight: 700,
+              letterSpacing: '-0.04em',
+              color: '#fff',
+              whiteSpace: 'nowrap',
+              fontFamily: "'Sora', sans-serif",
+            }}>
               <span style={{ color: '#fff' }}>Drop</span><span style={{ color: '#3b82f6' }}>amyn</span>
             </span>
           ) : (
@@ -153,48 +164,80 @@ export default function Sidebar() {
           )}
         </Link>
 
-        {/* Nav Items */}
+        {/* ---- Nav Items ---- */}
         <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', padding: '0 12px' }}>
-          {navItems.map((item) => {
-            const active = isNavActive(item);
+          {visibleNavItems.map((item) => {
+            const isActive = pathname === item.href;
             return (
-              <Link key={item.href} href={item.href}
+              <Link
+                key={item.href}
+                href={item.href}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '14px',
-                  padding: '11px 12px', borderRadius: '12px',
-                  color: active ? '#fff' : 'var(--text-secondary)',
-                  background: active ? 'rgba(59,130,246,0.08)' : 'transparent',
-                  textDecoration: 'none', transition: 'all 0.2s ease',
-                  fontWeight: active ? 600 : 400, fontSize: '14px',
-                  overflow: 'hidden', whiteSpace: 'nowrap', minHeight: '44px',
-                  letterSpacing: '-0.01em', position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                  padding: '11px 12px',
+                  borderRadius: '12px',
+                  color: isActive ? '#fff' : 'var(--text-secondary)',
+                  background: isActive ? 'rgba(59,130,246,0.08)' : 'transparent',
+                  textDecoration: 'none',
+                  transition: 'all 0.2s ease',
+                  fontWeight: isActive ? 600 : 400,
+                  fontSize: '14px',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                  minHeight: '44px',
+                  letterSpacing: '-0.01em',
+                  position: 'relative',
                 }}
-                onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#fff'; }}}
-                onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}}
+                onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#fff'; }}}
+                onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}}
               >
-                {active && <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: '3px', height: '18px', borderRadius: '0 4px 4px 0', background: '#3b82f6' }} />}
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '22px', flexShrink: 0, opacity: active ? 1 : 0.7, transition: 'opacity 0.2s ease' }}>
+                {/* Active indicator dot */}
+                {isActive && (
+                  <div style={{
+                    position: 'absolute', left: '0px', top: '50%', transform: 'translateY(-50%)',
+                    width: '3px', height: '18px', borderRadius: '0 4px 4px 0',
+                    background: '#3b82f6',
+                  }} />
+                )}
+                <span style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: '22px', flexShrink: 0,
+                  opacity: isActive ? 1 : 0.7,
+                  transition: 'opacity 0.2s ease',
+                }}>
                   {item.icon}
                 </span>
-                {expanded && <span style={{ opacity: 1, transition: 'opacity 0.2s ease 0.1s' }}>{item.label}</span>}
+                {expanded && (
+                  <span style={{
+                    opacity: 1,
+                    transition: 'opacity 0.2s ease 0.1s',
+                  }}>
+                    {item.label}
+                  </span>
+                )}
               </Link>
             );
           })}
-
-          {/* Categories — desktop sidebar */}
+          {/* Categories expandable */}
           <div>
-            <button onClick={() => setDesktopCatOpen(!desktopCatOpen)} style={{
-              display: 'flex', alignItems: 'center', gap: '14px', width: '100%',
-              padding: '11px 12px', borderRadius: '12px', border: 'none',
-              color: desktopCatOpen ? '#60a5fa' : 'var(--text-secondary)',
-              background: desktopCatOpen ? 'rgba(59,130,246,0.06)' : 'transparent',
-              cursor: 'pointer', fontSize: '14px', fontWeight: desktopCatOpen ? 600 : 400,
-              transition: 'all 0.2s ease', minHeight: '44px', textAlign: 'left',
-            }}
+            <button
+              onClick={() => setDesktopCatOpen(!desktopCatOpen)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '14px', width: '100%',
+                padding: '11px 12px', borderRadius: '12px', border: 'none',
+                color: desktopCatOpen ? '#60a5fa' : 'var(--text-secondary)',
+                background: desktopCatOpen ? 'rgba(59,130,246,0.06)' : 'transparent',
+                cursor: 'pointer', fontSize: '14px', fontWeight: desktopCatOpen ? 600 : 400,
+                transition: 'all 0.2s ease', minHeight: '44px', textAlign: 'left',
+              }}
               onMouseEnter={(e) => { if (!desktopCatOpen) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#fff'; }}}
               onMouseLeave={(e) => { if (!desktopCatOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}}
             >
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '22px', flexShrink: 0, opacity: desktopCatOpen ? 1 : 0.7 }}>{catIcon}</span>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '22px', flexShrink: 0, opacity: desktopCatOpen ? 1 : 0.7 }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+              </span>
               {expanded && <span style={{ flex: 1 }}>Categories</span>}
               {expanded && (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: 'transform 0.2s ease', transform: desktopCatOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
@@ -204,49 +247,48 @@ export default function Sidebar() {
             </button>
             {desktopCatOpen && expanded && (
               <div style={{
-                position: 'fixed', top: '80px', left: '240px', width: '320px',
-                maxHeight: '70vh', overflowY: 'auto', scrollbarWidth: 'thin',
-                borderRadius: '20px', background: 'rgba(10,10,18,0.88)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)',
-                boxShadow: '0 16px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
-                padding: '18px 16px', zIndex: 100,
+                maxHeight: '200px', overflowY: 'auto', scrollbarWidth: 'thin',
+                padding: '4px 0 4px 36px',
+                display: 'flex', flexDirection: 'column', gap: '1px',
               }}>
-                <GlassPanelLayers />
-                <div style={{
-                  fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: '14px',
-                  fontFamily: "'Sora', sans-serif", letterSpacing: '0.1em', textTransform: 'uppercase',
-                  position: 'relative', zIndex: 5,
-                }}>Categories</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', position: 'relative', zIndex: 5 }}>
-                  {categories.filter(c => c.id !== 'all').map(cat => (
-                    <Link key={cat.id} href={`/feed?category=${cat.id}`} onClick={() => setDesktopCatOpen(false)} style={{ textDecoration: 'none' }}>
-                      <EdgeGlowCard className="glow-compact" style={{ cursor: 'pointer' }}>
-                        <div style={{ padding: '11px 14px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', fontWeight: 500, letterSpacing: '-0.01em', fontFamily: "'Sora', sans-serif" }}>
-                          {cat.name}
-                        </div>
-                      </EdgeGlowCard>
-                    </Link>
-                  ))}
-                </div>
+                {categories.filter(c => c.id !== 'all').map(cat => (
+                  <Link
+                    key={cat.id}
+                    href={`/feed?category=${cat.id}`}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '8px 10px', borderRadius: '8px',
+                      fontSize: '13px', color: 'var(--text-secondary)',
+                      textDecoration: 'none', transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(59,130,246,0.06)'; e.currentTarget.style.color = '#60a5fa'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                  >
+                    <span style={{ fontSize: '15px' }}>{cat.icon}</span>
+                    <span>{cat.name}</span>
+                  </Link>
+                ))}
               </div>
             )}
           </div>
         </nav>
 
-        {/* Bottom Items */}
+        {/* ---- Bottom Items ---- */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '0 12px 24px' }}>
+          {/* Dashboard — brand users only */}
           {loggedIn && isBrand && (
-            <Link href="/dashboard" style={{
-              display: 'flex', alignItems: 'center', gap: '14px',
-              padding: '11px 12px', borderRadius: '12px',
-              color: pathname === '/dashboard' ? '#fff' : 'var(--text-secondary)',
-              background: pathname === '/dashboard' ? 'rgba(59,130,246,0.08)' : 'transparent',
-              textDecoration: 'none', fontSize: '14px',
-              fontWeight: pathname === '/dashboard' ? 600 : 400,
-              overflow: 'hidden', whiteSpace: 'nowrap', minHeight: '44px',
-              transition: 'all 0.2s ease',
-            }}
+            <Link
+              href="/dashboard"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '14px',
+                padding: '11px 12px', borderRadius: '12px',
+                color: pathname === '/dashboard' ? '#fff' : 'var(--text-secondary)',
+                background: pathname === '/dashboard' ? 'rgba(59,130,246,0.08)' : 'transparent',
+                textDecoration: 'none', fontSize: '14px',
+                fontWeight: pathname === '/dashboard' ? 600 : 400,
+                overflow: 'hidden', whiteSpace: 'nowrap', minHeight: '44px',
+                transition: 'all 0.2s ease',
+              }}
               onMouseEnter={(e) => { if (pathname !== '/dashboard') { e.currentTarget.style.background = 'rgba(59,130,246,0.04)'; e.currentTarget.style.color = '#60a5fa'; }}}
               onMouseLeave={(e) => { if (pathname !== '/dashboard') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}}
             >
@@ -256,16 +298,19 @@ export default function Sidebar() {
               {expanded && <span>Dashboard</span>}
             </Link>
           )}
-          <Link href="/profile" style={{
-            display: 'flex', alignItems: 'center', gap: '14px',
-            padding: '11px 12px', borderRadius: '12px',
-            color: pathname === '/profile' ? '#fff' : 'var(--text-secondary)',
-            background: pathname === '/profile' ? 'rgba(255,255,255,0.06)' : 'transparent',
-            textDecoration: 'none', fontSize: '14px',
-            fontWeight: pathname === '/profile' ? 600 : 400,
-            overflow: 'hidden', whiteSpace: 'nowrap', minHeight: '44px',
-            transition: 'all 0.2s ease',
-          }}
+          {/* Profile */}
+          <Link
+            href="/profile"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '14px',
+              padding: '11px 12px', borderRadius: '12px',
+              color: pathname === '/profile' ? '#fff' : 'var(--text-secondary)',
+              background: pathname === '/profile' ? 'rgba(255,255,255,0.06)' : 'transparent',
+              textDecoration: 'none', fontSize: '14px',
+              fontWeight: pathname === '/profile' ? 600 : 400,
+              overflow: 'hidden', whiteSpace: 'nowrap', minHeight: '44px',
+              transition: 'all 0.2s ease',
+            }}
             onMouseEnter={(e) => { if (pathname !== '/profile') { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#fff'; }}}
             onMouseLeave={(e) => { if (pathname !== '/profile') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}}
           >
@@ -275,89 +320,129 @@ export default function Sidebar() {
             {expanded && <span>Profile</span>}
           </Link>
         </div>
-        </div>
+        </div>{/* end content wrapper */}
       </aside>
 
       {/* ===== MOBILE TOP HEADER ===== */}
-      <div className="mobile-top-header" style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
-        background: 'rgba(5,5,8,0.88)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 16px', height: '52px',
-      }}>
-        {/* Logo */}
+      <div
+        className="mobile-top-header"
+        style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
+          background: 'rgba(5,5,8,0.88)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          borderBottom: '1px solid rgba(255,255,255,0.04)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 16px', height: '52px',
+        }}
+      >
+        {/* Logo — fades out on scroll */}
         <Link href="/feed" style={{
           textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '2px',
-          transition: 'all 0.3s ease', opacity: scrolled ? 0 : 1, width: scrolled ? 0 : 'auto',
-          overflow: 'hidden', whiteSpace: 'nowrap',
+          transition: 'all 0.3s ease',
+          opacity: scrolled ? 0 : 1,
+          width: scrolled ? 0 : 'auto',
+          overflow: 'hidden',
+          whiteSpace: 'nowrap',
         }}>
           <span style={{ fontSize: '18px', fontWeight: 700, fontFamily: "'Sora', sans-serif", letterSpacing: '-0.04em' }}>
             <span style={{ color: '#fff' }}>Drop</span><span style={{ color: '#3b82f6' }}>amyn</span>
           </span>
         </Link>
-
-        {/* Right icons: Categories + Notification + Profile */}
+        {/* Right icons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          {/* Categories button (mobile top-right) */}
-          <button onClick={() => { setMobileCatOpen(!mobileCatOpen); setNotificationOpen(false); }}
-            style={{ color: mobileCatOpen ? '#60a5fa' : 'var(--text-muted)', display: 'flex', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-          >
-            {catIcon}
-          </button>
-
-          {/* Notification bell */}
           <div style={{ position: 'relative' }}>
-            <button onClick={() => { if (loggedIn) openNotifications(); else router.push('/login'); }}
+            <button
+              onClick={() => { if (loggedIn) openNotifications(); else router.push('/login'); }}
               style={{ color: notificationOpen ? '#fff' : 'var(--text-muted)', display: 'flex', background: 'none', border: 'none', cursor: 'pointer', padding: 0, position: 'relative' }}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
               {unreadCount > 0 && (
                 <span style={{
-                  position: 'absolute', top: '-5px', right: '-6px', minWidth: '16px', height: '16px',
-                  borderRadius: '999px', background: '#3b82f6', color: '#fff', fontSize: '9px', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
-                }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                  position: 'absolute',
+                  top: '-5px',
+                  right: '-6px',
+                  minWidth: '16px',
+                  height: '16px',
+                  borderRadius: '999px',
+                  background: '#3b82f6',
+                  color: '#fff',
+                  fontSize: '9px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                }}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
               )}
             </button>
             {notificationOpen && loggedIn && (
               <div style={{
-                position: 'absolute', top: '34px', right: '-8px', width: '290px', maxHeight: '360px',
-                overflowY: 'auto', borderRadius: '16px', background: 'rgba(8,8,14,0.96)',
-                border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 22px 50px rgba(0,0,0,0.5)',
-                backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', padding: '12px',
+                position: 'absolute',
+                top: '34px',
+                right: '-8px',
+                width: '290px',
+                maxHeight: '360px',
+                overflowY: 'auto',
+                borderRadius: '16px',
+                background: 'rgba(8,8,14,0.96)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                boxShadow: '0 22px 50px rgba(0,0,0,0.5)',
+                backdropFilter: 'blur(24px)',
+                WebkitBackdropFilter: 'blur(24px)',
+                padding: '12px',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                   <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', fontFamily: "'Sora', sans-serif" }}>Notifications</div>
-                  <button onClick={() => { markAllNotificationsRead(); syncNotifications(); }}
-                    style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer', padding: 0 }}>Mark all read</button>
+                  <button
+                    onClick={() => { markAllNotificationsRead(); syncNotifications(); }}
+                    style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                  >
+                    Mark all read
+                  </button>
                 </div>
                 {notifications.length === 0 ? (
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, padding: '10px 4px' }}>
                     Save a drop with Notify Me and we&apos;ll alert you here when it goes live.
                   </div>
                 ) : (
-                  notifications.map((n) => (
-                    <button key={n.id} onClick={() => handleNotificationClick(n)} style={{
-                      width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
-                      background: n.readAt ? 'transparent' : 'rgba(59,130,246,0.06)',
-                      borderRadius: '12px', padding: '10px', color: '#fff',
-                      display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px',
-                    }}>
+                  notifications.map((notification) => (
+                    <button
+                      key={notification.id}
+                      onClick={() => handleNotificationClick(notification)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: notification.readAt ? 'transparent' : 'rgba(59,130,246,0.06)',
+                        borderRadius: '12px',
+                        padding: '10px',
+                        color: '#fff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        marginBottom: '6px',
+                      }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 600 }}>{n.title}</span>
-                        {!n.readAt && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} />}
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>{notification.title}</span>
+                        {!notification.readAt && (
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} />
+                        )}
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{n.brandName}</div>
-                      <div style={{ fontSize: '11px', color: n.notifiedAt ? '#34d399' : 'var(--text-muted)' }}>{formatNotificationTime(n)}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{notification.brandName}</div>
+                      <div style={{ fontSize: '11px', color: notification.notifiedAt ? '#34d399' : 'var(--text-muted)' }}>
+                        {formatNotificationTime(notification)}
+                      </div>
                     </button>
                   ))
                 )}
               </div>
             )}
           </div>
-
-          {/* Profile avatar */}
           <Link href={loggedIn ? '/profile' : '/login'} style={{ display: 'flex' }}>
             <div style={{
               width: '28px', height: '28px', borderRadius: '50%',
@@ -365,7 +450,8 @@ export default function Sidebar() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: userAvatar ? '0' : '12px', fontWeight: 600, color: '#fff',
               border: pathname === '/profile' ? '2px solid #3b82f6' : '2px solid transparent',
-              overflow: 'hidden', transition: 'border-color 0.2s ease',
+              overflow: 'hidden',
+              transition: 'border-color 0.2s ease',
             }}>
               {!userAvatar && (userName ? userName.charAt(0).toUpperCase() : '?')}
             </div>
@@ -376,25 +462,45 @@ export default function Sidebar() {
       {/* ===== MOBILE CATEGORIES PANEL ===== */}
       {mobileCatOpen && (
         <>
-          <div onClick={() => setMobileCatOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 98, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} />
+          <div
+            onClick={() => setMobileCatOpen(false)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 98,
+              background: 'rgba(0,0,0,0.6)',
+              backdropFilter: 'blur(4px)',
+            }}
+          />
           <div style={{
-            position: 'fixed', top: '52px', left: '8px', right: '8px', zIndex: 99,
-            background: 'rgba(10,10,18,0.97)', border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: '20px', padding: '18px 16px 14px',
-            boxShadow: '0 8px 40px rgba(0,0,0,0.5)', backdropFilter: 'blur(24px)',
-            maxHeight: '65vh', overflowY: 'auto',
-          }}>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: '14px', fontFamily: "'Sora', sans-serif", letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            position: 'fixed', bottom: '66px', left: '8px', right: '8px', zIndex: 99,
+            background: 'rgba(10,10,18,0.97)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: '20px',
+            padding: '18px 16px 14px',
+            boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(24px)',
+            maxHeight: '55vh', overflowY: 'auto',
+          }}
+            className="mobile-bottom-nav"
+          >
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '14px', fontFamily: "'Sora', sans-serif", letterSpacing: '-0.02em' }}>
               Categories
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               {categories.filter(c => c.id !== 'all').map(cat => (
-                <Link key={cat.id} href={`/feed?category=${cat.id}`} onClick={() => setMobileCatOpen(false)} style={{ textDecoration: 'none' }}>
-                  <EdgeGlowCard className="glow-compact" style={{ cursor: 'pointer' }}>
-                    <div style={{ padding: '12px 14px', fontSize: '13px', color: 'rgba(255,255,255,0.55)', fontWeight: 500, fontFamily: "'Sora', sans-serif", letterSpacing: '-0.01em' }}>
-                      {cat.name}
-                    </div>
-                  </EdgeGlowCard>
+                <Link
+                  key={cat.id}
+                  href={`/feed?category=${cat.id}`}
+                  onClick={() => setMobileCatOpen(false)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                    padding: '14px 6px', borderRadius: '14px',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.04)',
+                    textDecoration: 'none', transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span style={{ fontSize: '20px' }}>{cat.icon}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'center' }}>{cat.name}</span>
                 </Link>
               ))}
             </div>
@@ -402,56 +508,76 @@ export default function Sidebar() {
         </>
       )}
 
-      {/* ===== BOTTOM NAV (Mobile) ===== */}
-      <div className="mobile-bottom-nav" style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
-        background: 'rgba(5,5,8,0.9)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
-        borderTop: '1px solid rgba(255,255,255,0.04)',
-        display: 'flex', justifyContent: 'space-around', padding: '6px 0 12px',
-      }}>
-        {/* Home */}
-        <Link href="/feed" style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 8px',
-          color: isHomeActive ? '#3b82f6' : 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.2s ease', position: 'relative',
-        }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          {isHomeActive && <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#3b82f6', marginTop: '4px' }} />}
-        </Link>
+      {/* ===== BOTTOM NAV (Mobile only) ===== */}
+      <div
+        className="mobile-bottom-nav"
+        style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+          background: 'rgba(5,5,8,0.9)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          borderTop: '1px solid rgba(255,255,255,0.04)',
+          display: 'flex', justifyContent: 'space-around',
+          padding: '6px 0 12px',
+        }}
+      >
+        {[
+          { href: '/feed', icon: (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>) },
+          { href: '/trending', icon: (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>) },
+          { href: '/search', icon: (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>) },
+        ].map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              padding: '6px 8px',
+              color: pathname === item.href ? '#3b82f6' : 'var(--text-muted)',
+              textDecoration: 'none',
+              transition: 'color 0.2s ease',
+              position: 'relative',
+            }}
+          >
+            <span style={{ display: 'flex' }}>{item.icon}</span>
+            {pathname === item.href && (
+              <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#3b82f6', marginTop: '4px' }} />
+            )}
+          </Link>
+        ))}
 
-        {/* For You */}
-        <Link href="/feed?mode=foryou" style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 8px',
-          color: isForYouActive ? '#a78bfa' : 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.2s ease', position: 'relative',
-        }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          {isForYouActive && <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#a78bfa', marginTop: '4px' }} />}
-        </Link>
-
-        {/* Trending */}
-        <Link href="/trending" style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 8px',
-          color: pathname === '/trending' ? '#3b82f6' : 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.2s ease', position: 'relative',
-        }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-          {pathname === '/trending' && <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#3b82f6', marginTop: '4px' }} />}
-        </Link>
-
-        {/* Search */}
-        <Link href="/search" style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 8px',
-          color: pathname === '/search' ? '#3b82f6' : 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.2s ease', position: 'relative',
-        }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          {pathname === '/search' && <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#3b82f6', marginTop: '4px' }} />}
-        </Link>
+        {/* Categories button */}
+        <button
+          onClick={() => setMobileCatOpen(!mobileCatOpen)}
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            padding: '6px 8px', background: 'none', border: 'none',
+            color: mobileCatOpen ? '#3b82f6' : 'var(--text-muted)',
+            cursor: 'pointer', transition: 'color 0.2s ease',
+            position: 'relative',
+          }}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          {mobileCatOpen && (
+            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#3b82f6', marginTop: '4px' }} />
+          )}
+        </button>
 
         {/* Saved */}
-        <Link href="/saved" style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 8px',
-          color: pathname === '/saved' ? '#3b82f6' : 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.2s ease', position: 'relative',
-        }}>
+        <Link
+          href="/saved"
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            padding: '6px 8px',
+            color: pathname === '/saved' ? '#3b82f6' : 'var(--text-muted)',
+            textDecoration: 'none',
+            transition: 'color 0.2s ease',
+            position: 'relative',
+          }}
+        >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-          {pathname === '/saved' && <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#3b82f6', marginTop: '4px' }} />}
+          {pathname === '/saved' && (
+            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#3b82f6', marginTop: '4px' }} />
+          )}
         </Link>
       </div>
     </>

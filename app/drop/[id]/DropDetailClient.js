@@ -1,24 +1,24 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toggleLike, toggleSave, toggleFollowBrand, addComment, formatNumber } from '../../../lib/api';
 import CountdownTimer from '../../../components/CountdownTimer';
 import Link from 'next/link';
 
+function getTimeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
 export default function DropDetailClient({ drop: initialDrop }) {
   const router = useRouter();
-  const getUser = () => typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || 'null') : null;
-  const getTimeAgo = (dateStr) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'now';
-    if (mins < 60) return `${mins}m`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h`;
-    const days = Math.floor(hours / 24);
-    return `${days}d`;
-  };
   const [drop] = useState(initialDrop);
   const [liked, setLiked] = useState(initialDrop.isLiked || false);
   const [likeCount, setLikeCount] = useState(initialDrop._count?.likes || 0);
@@ -26,17 +26,17 @@ export default function DropDetailClient({ drop: initialDrop }) {
   const [following, setFollowing] = useState(initialDrop.isFollowingBrand || false);
   const [notified, setNotified] = useState(false);
   const [newComment, setNewComment] = useState('');
-  const [comments, setComments] = useState(() => (initialDrop.comments || []).map((c) => ({
-    id: c.id,
-    user: c.user?.name || 'Anonymous',
-    text: c.text,
-    time: getTimeAgo(c.createdAt),
-  })));
+  const [comments, setComments] = useState(() => (
+    initialDrop.comments?.map(c => ({
+      id: c.id,
+      user: c.user?.name || 'Anonymous',
+      text: c.text,
+      time: getTimeAgo(c.createdAt),
+    })) || []
+  ));
   const [posting, setPosting] = useState(false);
-  const [currentImg, setCurrentImg] = useState(0);
 
-  const images = (initialDrop.imageUrls && initialDrop.imageUrls.length > 0) ? initialDrop.imageUrls : [initialDrop.imageUrl].filter(Boolean);
-  const touchStartX = useRef(0);
+  const getUser = () => typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || 'null') : null;
 
   const requireLogin = () => {
     if (!getUser()) {
@@ -115,7 +115,7 @@ export default function DropDetailClient({ drop: initialDrop }) {
     <div style={{ maxWidth: '470px', margin: '0 auto', width: '100%' }}>
       {/* Back */}
       <div style={{ padding: '14px 16px' }}>
-        <Link href="/feed" style={{ color: '#3b82f6', fontSize: '13px', textDecoration: 'none', fontWeight: 500, letterSpacing: '-0.01em' }}>← Feed</Link>
+        <Link href="/" style={{ color: '#3b82f6', fontSize: '13px', textDecoration: 'none', fontWeight: 500, letterSpacing: '-0.01em' }}>← Feed</Link>
       </div>
 
       {/* Header */}
@@ -125,10 +125,10 @@ export default function DropDetailClient({ drop: initialDrop }) {
           background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', padding: '2px',
         }}>
           <img
-            src={drop.brand?.logo || `https://ui-avatars.com/api/?name=${encodeURIComponent(drop.brand?.name || 'Brand')}&background=0a0a0f&color=3b82f6&size=36`}
+            src={drop.brand?.logo}
             alt={drop.brand?.name}
             style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', background: 'var(--bg-secondary)', border: '2px solid var(--bg-primary)' }}
-            onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(drop.brand?.name || 'Brand')}&background=0a0a0f&color=3b82f6&size=36`; }}
+            onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${drop.brand?.name}&background=0a0a0f&color=3b82f6&size=36`; }}
           />
         </div>
         <div style={{ flex: 1 }}>
@@ -151,91 +151,16 @@ export default function DropDetailClient({ drop: initialDrop }) {
         </div>
       </div>
 
-      {/* Image Carousel */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '1', overflow: 'hidden', background: 'var(--bg-secondary)' }}
-        onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
-        onTouchEnd={(e) => {
-          if (images.length <= 1) return;
-          const delta = touchStartX.current - e.changedTouches[0].clientX;
-          if (Math.abs(delta) > 50) {
-            if (delta > 0 && currentImg < images.length - 1) setCurrentImg(currentImg + 1);
-            else if (delta < 0 && currentImg > 0) setCurrentImg(currentImg - 1);
-          }
-        }}
-      >
-        <div style={{
-          display: 'flex', width: `${images.length * 100}%`,
-          transform: `translateX(-${currentImg * (100 / images.length)}%)`,
-          transition: 'transform 0.35s ease',
-          height: '100%',
-        }}>
-          {images.map((src, i) => (
-            <img key={i} src={src} alt={`${drop.title} ${i + 1}`}
-              style={{ width: `${100 / images.length}%`, height: '100%', objectFit: 'cover', display: 'block', flexShrink: 0 }}
-            />
-          ))}
-        </div>
-
-        {/* Carousel dots */}
-        {images.length > 1 && (
-          <div style={{
-            position: 'absolute', top: '12px', right: '14px',
-            display: 'flex', gap: '5px', padding: '5px 8px',
-            background: 'rgba(0,0,0,0.4)', borderRadius: '50px',
-          }}>
-            {images.map((_, i) => (
-              <button key={i} onClick={() => setCurrentImg(i)} style={{
-                width: currentImg === i ? '16px' : '6px', height: '6px', borderRadius: '50px',
-                background: currentImg === i ? '#fff' : 'rgba(255,255,255,0.4)',
-                border: 'none', padding: 0, cursor: 'pointer', transition: 'all 0.3s ease',
-              }} />
-            ))}
-          </div>
-        )}
-
-        {/* Left/Right arrows */}
-        {images.length > 1 && currentImg > 0 && (
-          <button onClick={() => setCurrentImg(currentImg - 1)}
-            style={{
-              position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)',
-              width: '32px', height: '32px', borderRadius: '50%',
-              background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255,255,255,0.15)', color: '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', transition: 'all 0.2s ease', zIndex: 6,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.75)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.55)'; }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-        )}
-        {images.length > 1 && currentImg < images.length - 1 && (
-          <button onClick={() => setCurrentImg(currentImg + 1)}
-            style={{
-              position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)',
-              width: '32px', height: '32px', borderRadius: '50%',
-              background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255,255,255,0.15)', color: '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', transition: 'all 0.2s ease', zIndex: 6,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.75)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.55)'; }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-        )}
-
-        {/* Price badge */}
-        {drop.price && drop.price.trim() !== '' && (
+      {/* Image */}
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '1', overflow: 'hidden', background: 'var(--bg-secondary)' }}>
+        <img src={drop.imageUrl} alt={drop.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         <div style={{
           position: 'absolute', bottom: '14px', right: '14px', fontSize: '13px', fontWeight: 600, color: '#fff',
           background: 'rgba(5,5,8,0.7)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
           padding: '6px 14px', borderRadius: 'var(--radius-full)',
           border: '1px solid rgba(255,255,255,0.06)', fontFamily: "'Sora', sans-serif", letterSpacing: '-0.02em',
         }}>{drop.price}</div>
-        )}
+
       </div>
 
       {/* Actions */}

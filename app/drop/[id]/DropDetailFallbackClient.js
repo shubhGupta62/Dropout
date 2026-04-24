@@ -50,7 +50,7 @@ export default function DropDetailFallbackClient({ id }) {
       <div style={{ maxWidth: '470px', margin: '0 auto', textAlign: 'center', padding: '80px 20px' }}>
         <div style={{ fontSize: '32px', marginBottom: '16px', opacity: 0.5 }}>◇</div>
         <div style={{ fontWeight: 600, color: '#fff', marginBottom: '8px', fontFamily: "'Sora', sans-serif", fontSize: '16px', letterSpacing: '-0.02em' }}>Drop not found</div>
-        <Link href="/feed" style={{
+        <Link href="/" style={{
           display: 'inline-block', marginTop: '16px', padding: '10px 28px',
           borderRadius: 'var(--radius-full)', background: '#3b82f6', color: '#fff',
           fontWeight: 600, fontSize: '13px', textDecoration: 'none',

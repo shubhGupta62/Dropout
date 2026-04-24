@@ -1,5 +1,16 @@
+import { Sora, Space_Grotesk } from 'next/font/google';
 import "./globals.css";
 import ClientShell from "../components/ClientShell";
+
+const sora = Sora({
+  subsets: ['latin'],
+  variable: '--font-sora',
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-space-grotesk',
+});
 
 export const metadata = {
   title: "Dropamyn — Discover What's Dropping Next",
@@ -9,12 +20,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Allura&family=Sora:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
-      <body style={{ fontFamily: "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+      <body className={`${sora.variable} ${spaceGrotesk.variable}`} style={{ fontFamily: "var(--font-space-grotesk), -apple-system, BlinkMacSystemFont, sans-serif" }}>
         <ClientShell
           fallback={
             <main style={{ minHeight: '100vh', paddingBottom: '60px' }} />

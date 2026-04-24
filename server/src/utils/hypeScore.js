@@ -1,5 +1,4 @@
-const prisma = require('./prisma');
-
+const prisma = require('../lib/prisma');
 
 /**
  * Recalculate and update hype score for a drop.

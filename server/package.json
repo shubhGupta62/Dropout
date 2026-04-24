@@ -9,6 +9,7 @@
     "build": "npx prisma generate && npx prisma db push",
     "db:push": "npx prisma db push",
     "db:seed": "node prisma/seed.js",
+    "seed:admin": "node prisma/seedAdmin.js",
     "db:migrate": "npx prisma migrate dev",
     "postinstall": "npx prisma generate"
   },
@@ -16,17 +17,17 @@
     "@prisma/client": "^6.4.1",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.5.1",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^5.0.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^1.4.5-lts.2",
-    "resend": "^6.9.4"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "prisma": "^6.4.1"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=18"
   }
 }
